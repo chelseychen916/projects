@@ -386,7 +386,7 @@ input[type="range"] { accent-color: var(--felt); min-height: 32px; }
         <button type="submit" class="btn primary" id="addSave">保存并开始</button>
       </div>
     </form>
-    <p class="libfoot">没有开麦克风时:点屏幕琴键(可以多指同时按),或用电脑键盘 A S D F G H J 弹最左边八度的白键,Q W E R T Y U 弹右边一个八度。 · 页面版本 v14</p>
+    <p class="libfoot">没有开麦克风时:点屏幕琴键(可以多指同时按),或用电脑键盘 A S D F G H J 弹最左边八度的白键,Q W E R T Y U 弹右边一个八度。 · 页面版本 v15</p>
   </section>
 </div>
 
@@ -499,6 +499,7 @@ function detectPitchSpec(db, sr, fftSize) {
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
   /* ---------- songs ---------- */
+  var CANON_THEME = 'E5 D5 C5 B4 A4 G4 A4 B4 C5 B4 A4 G4 F4 E4 F4 D4';
   var SONGS = [
     { id: 'twinkle', title: '小星星', notes: parse('C4 C4 G4 G4 A4 A4 G4 F4 F4 E4 E4 D4 D4 C4 G4 G4 F4 F4 E4 E4 D4 G4 G4 F4 F4 E4 E4 D4 C4 C4 G4 G4 A4 A4 G4 F4 F4 E4 E4 D4 D4 C4'),
       fing: fing('1 1 4 4 5 5 4 4 4 3 3 2 2 1 5 5 4 4 3 3 2 5 5 4 4 3 3 2 1 1 4 4 5 5 4 4 4 3 3 2 2 1') },
@@ -510,12 +511,20 @@ function detectPitchSpec(db, sr, fftSize) {
       fing: fing('3 2 1 2 3 3 3 2 2 2 3 5 5 3 2 1 2 3 3 3 3 2 2 3 2 1') },
     { id: 'bun', title: '十字面包', notes: parse('E4 D4 C4 E4 D4 C4 C4 C4 C4 C4 D4 D4 D4 D4 E4 D4 C4'),
       fing: fing('3 2 1 3 2 1 1 1 1 1 2 2 2 2 3 2 1') },
+    { id: 'moon', title: '月光下(法国民谣)', notes: parse('C4 C4 C4 D4 E4 D4 C4 E4 D4 D4 C4') },
     { id: 'row', title: '划船歌', notes: parse('C4 C4 C4 D4 E4 E4 D4 E4 F4 G4 C5 C5 C5 G4 G4 G4 E4 E4 E4 C4 C4 C4 G4 F4 E4 D4 C4') },
     { id: 'london', title: '伦敦桥', notes: parse('G4 A4 G4 F4 E4 F4 G4 D4 E4 F4 E4 F4 G4 G4 A4 G4 F4 E4 F4 G4 D4 G4 E4 C4') },
+    { id: 'jingle', title: '铃儿响叮当(开头)', notes: parse('E4 E4 E4 E4 E4 E4 E4 G4 C4 D4 E4') },
     { id: 'birthday', title: '生日快乐', notes: parse('G4 G4 A4 G4 C5 B4 G4 G4 A4 G4 D5 C5 G4 G4 G5 E5 C5 B4 A4 F5 F5 E5 C5 D5 C5') },
     { id: 'silent', title: '平安夜(开头)', notes: parse('G4 A4 G4 E4 G4 A4 G4 E4 D5 D5 B4 C5 C5 G4') },
-    { id: 'canon', title: '卡农(开头)', notes: parse('E5 D5 C5 B4 A4 G4 A4 B4 C5 B4 A4 G4 F4 E4 F4 D4') },
-    { id: 'elise', title: '致爱丽丝(开头,含黑键)', noLH: true, notes: parse('E5 D#5 E5 D#5 E5 B4 D5 C5 A4 C4 E4 A4 B4 E4 G#4 B4 C5') }
+    { id: 'minuet', title: '小步舞曲(开头,G 大调)', tonic: 7, notes: parse('D5 G4 A4 B4 C5 D5 G4 G4 E5 C5 D5 E5 F#5 G5 G4 G4') },
+    { id: 'canon', title: '卡农(开头)', notes: parse(CANON_THEME) },
+    { id: 'canon_long', title: '卡农(扩展版)', note: '第 1 段和最后一段是主旋律,中间两段是按同一套和弦编的简化变奏。',
+      notes: parse(CANON_THEME + ' G4 C5 B4 D5 C5 E5 G5 E5 F5 C5 E5 G4 A4 F5 D5 B4 '
+        + 'C5 E5 G5 E5 D5 B4 G4 B4 A4 C5 E5 C5 G4 B4 E5 B4 F4 A4 C5 A4 G4 C5 E5 C5 A4 C5 F5 C5 B4 D5 G5 D5 '
+        + CANON_THEME + ' C5') },
+    { id: 'elise', title: '致爱丽丝(主题,含黑键)', noLH: true,
+      notes: parse('E5 D#5 E5 D#5 E5 B4 D5 C5 A4 C4 E4 A4 B4 E4 G#4 B4 C5 E4 E5 D#5 E5 D#5 E5 B4 D5 C5 A4 C4 E4 A4 B4 E4 C5 B4 A4') }
   ];
   /* Note lengths in beats (quarter = 1), beats per bar, the beat inside the first bar where the melody starts (pickups). */
   var RHY = {
@@ -527,7 +536,11 @@ function detectPitchSpec(db, sr, fftSize) {
     birthday: { bar: 3, start: 2, dur: '0.75 0.25 1 1 1 2 0.75 0.25 1 1 1 2 0.75 0.25 1 1 1 1 1 0.75 0.25 1 1 1 2' },
     bun: { bar: 4, dur: '1 1 2 1 1 2 ' + rep('0.5', 8) + ' 1 1 2' },
     london: { bar: 4, dur: '1.5 0.5 1 1 1 1 2 1 1 2 1 1 2 1.5 0.5 1 1 1 1 2 2 2 2 2' },
-    silent: { bar: 3, dur: '1.5 0.5 1 3 1.5 0.5 1 3 2 1 3 2 1 3' }
+    silent: { bar: 3, dur: '1.5 0.5 1 3 1.5 0.5 1 3 2 1 3 2 1 3' },
+    moon: { bar: 4, dur: '1 1 1 1 2 2 1 1 1 1 4' },
+    jingle: { bar: 4, dur: '1 1 2 1 1 2 1 1 1.5 0.5 4' },
+    minuet: { bar: 3, dur: '1 0.5 0.5 0.5 0.5 1 1 1 1 0.5 0.5 0.5 0.5 1 1 1' },
+    canon_long: { bar: 4, dur: rep('1', 16) + ' ' + rep('1', 16) + ' ' + rep('0.5', 32) + ' ' + rep('1', 16) + ' 4' }
   };
   /* Left-hand chords, one token per bar ('+' splits a bar evenly, '_' = no chord). My own simple harmonisations. */
   var PROG = {
@@ -540,7 +553,10 @@ function detectPitchSpec(db, sr, fftSize) {
     bun: 'C | C | C | C',
     london: 'C | C | G | C | C | C | G | C',
     silent: 'C | C | C | C | G | G | C | C',
-    canon: 'C+G | Am+Em | F+C | F+G'
+    canon: 'C+G | Am+Em | F+C | F+G',
+    canon_long: [1, 2, 3, 4].map(function () { return 'C+G | Am+Em | F+C | F+G'; }).join(' | ') + ' | C',
+    moon: 'C | C+G | C+G | C',
+    jingle: 'C | C | C | C'
   };
   var DEG = { C: 'I', F: 'IV', G: 'V', Am: 'vi', Dm: 'ii', Em: 'iii' };
   var DEGROOT = { I: 0, IV: 5, V: 7, vi: 9, ii: 2, iii: 4 };
@@ -554,7 +570,7 @@ function detectPitchSpec(db, sr, fftSize) {
   SONGS.forEach(function (s) {
     var r = RHY[s.id];
     if (r) { s.dur = r.dur.split(' ').map(Number); s.bar = r.bar; s.start = r.start || 0; }
-    s.tonic = 0;
+    if (s.tonic == null) s.tonic = 0;
   });
 
   function autoFing(notes) {
@@ -1529,7 +1545,7 @@ function detectPitchSpec(db, sr, fftSize) {
   }
 
   /* ---------- song library tab ---------- */
-  var LEVEL = { mary: '入门', bun: '入门', twinkle: '初级', ode: '初级', tigers: '初级', row: '初级', london: '初级', silent: '进阶', birthday: '进阶', canon: '进阶', elise: '进阶' };
+  var LEVEL = { mary: '入门', bun: '入门', moon: '入门', twinkle: '初级', ode: '初级', tigers: '初级', row: '初级', london: '初级', jingle: '初级', silent: '进阶', birthday: '进阶', minuet: '进阶', canon: '进阶', canon_long: '进阶', elise: '进阶' };
   function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function renderLibrary() {
     var box = $('songGrid'); box.textContent = '';
@@ -1544,6 +1560,7 @@ function detectPitchSpec(db, sr, fftSize) {
       card.appendChild(chips);
       var best = parseInt(lsGet('qj_best_' + s.id) || '-1', 10);
       card.appendChild(mk('div', 'best', best >= 0 ? '右手最好成绩 ' + best + '%' : '还没有成绩'));
+      if (s.note) card.appendChild(mk('p', 'hint', s.note));
       var row = mk('div', 'row');
       var go = mk('button', 'btn primary', s === song ? '继续练' : '弹这首'); go.type = 'button';
       go.addEventListener('click', function () { useSong(i); switchTab('play'); });
