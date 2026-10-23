@@ -245,7 +245,7 @@ select:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-
       </div>
     </div>
   </main>
-  <div class="foot">没有开麦克风时:点屏幕琴键(可以多指同时按),或用电脑键盘 A S D F G H J 弹最左边八度的白键,Q W E R T Y U 弹右边一个八度。 · 页面版本 v12</div>
+  <div class="foot">没有开麦克风时:点屏幕琴键(可以多指同时按),或用电脑键盘 A S D F G H J 弹最左边八度的白键,Q W E R T Y U 弹右边一个八度。 · 页面版本 v13</div>
 </div>
 
 <div class="modal" id="addModal" hidden>
@@ -325,6 +325,35 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
     else if (f >= 90 && f <= 1500) freqs.push(f);
     return freqs.some(function (ff) { var p = peakAt(ff); return p > floor * 8 && p > mx * 0.15; });
   });
+}
+// Frequency of the loudest spectral peak (for the on-screen diagnostics).
+function strongest(db, sr, fftSize) {
+  var binHz = sr / fftSize, lo = Math.max(1, Math.floor(70 / binHz)), hi = Math.min(db.length - 2, Math.ceil(3000 / binHz)), best = lo;
+  for (var i = lo; i <= hi; i++) if (db[i] > db[best]) best = i;
+  return best * binHz;
+}
+// Pitch from the harmonic series: score every candidate note by how many of its overtones show up as spectral peaks.
+// Works when a small microphone has cut the fundamental, because the overtones still line up.
+function detectPitchSpec(db, sr, fftSize) {
+  var binHz = sr / fftSize, n = db.length, i, mag = new Float32Array(n);
+  for (i = 0; i < n; i++) mag[i] = Math.pow(10, db[i] / 20);
+  var lo = Math.max(2, Math.floor(70 / binHz)), hi = Math.min(n - 2, Math.ceil(3000 / binHz)), arr = [];
+  for (i = lo; i <= hi; i++) arr.push(mag[i]);
+  arr.sort(function (a, b) { return a - b; });
+  var floor = arr[Math.floor(arr.length * 0.5)] || 1e-9, best = -1, bestSc = 0;
+  for (var m = 36; m <= 96; m++) {
+    var f0 = 440 * Math.pow(2, (m - 69) / 12), sc = 0, hits = 0;
+    for (var h = 1; h <= 6; h++) {
+      var f = f0 * h;
+      if (f > 3000) break;
+      var c = Math.round(f / binHz), pk = 0;
+      for (var k = c - 1; k <= c + 1; k++) if (k > 1 && k < n - 1 && mag[k] > pk) pk = mag[k];
+      var v = pk / floor;
+      if (v > 6) { sc += Math.log(v) / h; hits++; }
+    }
+    if (hits >= 2 && sc > bestSc) { bestSc = sc; best = m; }
+  }
+  return best < 0 ? null : { midi: best, freq: 440 * Math.pow(2, (best - 69) / 12) };
 }
 //</pitch>
 </script>
@@ -946,8 +975,10 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
       noise = Math.max(0.0008, calSum / Math.max(1, calN)); calUntil = 0;
     }
     peak = Math.max(rms, peak * 0.97);
-    var gate = Math.max(0.0012, noise * 2.5) * 5 / parseFloat($('sens').value);
-    var base = '音量 ' + (rms * 1000).toFixed(1) + '(最近最大 ' + (peak * 1000).toFixed(1) + ')/ 门槛 ' + (gate * 1000).toFixed(1);
+    var gate = Math.max(0.0008, noise * 2) * 5 / parseFloat($('sens').value);
+    an.getFloatFrequencyData(fdb);
+    var base = '音量 ' + (rms * 1000).toFixed(1) + '(最近最大 ' + (peak * 1000).toFixed(1) + ')/ 门槛 ' + (gate * 1000).toFixed(1)
+      + ' · 最强 ' + Math.round(strongest(fdb, AC.sampleRate, an.fftSize)) + ' Hz';
     if (demoTimer || now < ignoreUntil) { stable = 0; stableC = 0; lastMidi = null; return; }
     minR = Math.min(minR, rms);
     if (!armed && (rms < gate * 0.6 || rms > minR * 1.7 + gate * 0.5)) armed = true;
@@ -968,13 +999,14 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
       }
       return;
     }
-    var r = detectPitch(buf, AC.sampleRate, 0.2);
+    var r = detectPitch(buf, AC.sampleRate, 0.2), viaSpec = false;
+    if (!r) { r = detectPitchSpec(fdb, AC.sampleRate, an.fftSize); viaSpec = !!r; }
     if (!r) { stable = 0; lastMidi = null; $('micDbg').textContent = base + ' · 有声音,但听不出清晰的单音'; return; }
     var midi = Math.round(r.midi);
     if (Math.abs(r.midi - midi) > 0.4) { stable = 0; $('micDbg').textContent = base + ' · 音高不稳,约 ' + Math.round(r.freq) + ' Hz'; return; }
     if (midi === lastMidi) stable++; else { lastMidi = midi; stable = 1; }
     $('heardNote').textContent = noteName(midi);
-    $('micDbg').textContent = base + ' · 听到 ' + noteName(midi) + '(' + Math.round(r.freq) + ' Hz)' + (ev ? ',要弹 ' + ev.tones.map(function (t) { return noteName(t.m); }).join(' ') : '');
+    $('micDbg').textContent = base + ' · 听到 ' + noteName(midi) + '(' + Math.round(r.freq) + ' Hz' + (viaSpec ? ',按泛音推算' : '') + ')' + (ev ? ',要弹 ' + ev.tones.map(function (t) { return noteName(t.m); }).join(' ') : '');
     if (!ev || done) return;
     var match = inTones(ev, midi, 'mic');
     if (match && stable >= 2 && armed) { armed = false; minR = rms; attempt([midi], 'mic'); }
