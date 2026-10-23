@@ -1,0 +1,1386 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}
+#qjBanner{position:fixed;left:0;right:0;top:0;z-index:99;background:#b3261e;color:#fff;padding:12px 16px;font:15px/1.5 system-ui,sans-serif}</style>
+<script>
+(function(){
+  var errs=[];
+  function show(msg){
+    var b=document.getElementById('qjBanner');
+    if(!b){b=document.createElement('div');b.id='qjBanner';(document.body||document.documentElement).appendChild(b);}
+    b.textContent=msg;
+  }
+  window.addEventListener('error',function(e){errs.push(e.message+(e.lineno?' (第 '+e.lineno+' 行)':''));show('页面出错了:'+errs[errs.length-1]+'。请把这句话截图发给我。');});
+  window.addEventListener('load',function(){setTimeout(function(){
+    if(!window.__qjBoot&&!errs.length)show('页面里的程序没有运行。请不要用"文件"App 的预览打开,换成 Safari、Chrome 或 Documents 的浏览器打开。');
+  },1200);});
+})();
+</script>
+<title>琴键跟弹</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Music&display=swap">
+<style>
+/* Layout: one-screen practice tool. Header bar, status row, a staff strip (treble, bass, or both),
+   then a stage whose upper part is a note lane and whose lower part is the keyboard, all on one canvas
+   so blocks sit exactly above their keys. Right hand = blue, left hand = teal, current target = amber. */
+:root {
+  --bg: #eef1f5;
+  --fg: #16202b;
+  --muted: #5d6b79;
+  --panel: #ffffff;
+  --line: #d3dae2;
+  --lane: #e2e8ef;
+  --key: #fbfcfd;
+  --key-edge: #aab4bf;
+  --key-text: #44505c;
+  --black: #1b232c;
+  --accent: #2457c5;
+  --lh: #0e8a83;
+  --on-accent: #ffffff;
+  --target: #f0a020;
+  --ok: #2a9d5c;
+  --bad: #d64545;
+  --on-color: #101418;
+  --font: "Noto Sans SC", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141a; --fg: #e8edf2; --muted: #93a1b0; --panel: #18202a; --line: #2a3541;
+    --lane: #131a22; --key: #e6eaee; --key-edge: #7d8895; --key-text: #3a4550; --black: #07090c;
+    --accent: #6d9bff; --lh: #4fd1c5; --on-accent: #0b1220; --target: #ffb83d; --ok: #4cc884; --bad: #ff6b6b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141a; --fg: #e8edf2; --muted: #93a1b0; --panel: #18202a; --line: #2a3541;
+  --lane: #131a22; --key: #e6eaee; --key-edge: #7d8895; --key-text: #3a4550; --black: #07090c;
+  --accent: #6d9bff; --lh: #4fd1c5; --on-accent: #0b1220; --target: #ffb83d; --ok: #4cc884; --bad: #ff6b6b;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 15px;
+  padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+.app { height: 100%; display: flex; flex-direction: column; gap: 10px; padding-block: 12px; box-sizing: border-box; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.bar h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .02em; margin-right: 4px; }
+.field { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+select, button, .seg { font: inherit; }
+select {
+  min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg);
+}
+button {
+  min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); cursor: pointer; touch-action: manipulation;
+}
+button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 500; }
+button[aria-pressed="true"].tog { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+select:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+.seg[hidden] { display: none; }
+.seg button { border: 0; border-radius: 0; background: transparent; min-width: 60px; padding: 0 12px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 500; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); margin-right: 8px; vertical-align: 1px; }
+#mic[aria-pressed="true"] .dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 30%, transparent); }
+
+.metro { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.metro button { min-width: 44px; padding: 0 12px; }
+.metro select { min-height: 44px; }
+.metro output { min-width: 2.2em; text-align: center; font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
+.metro .unit { color: var(--muted); font-size: 13px; margin-right: 4px; }
+.bds { display: flex; gap: 7px; padding: 0 8px; }
+.bd { width: 13px; height: 13px; border-radius: 50%; background: var(--line); display: inline-block; }
+.bd.on { background: var(--accent); }
+.bd.acc.on { background: var(--target); }
+
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; min-height: 40px; }
+.hands { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.hands[hidden] { display: none; }
+.hands svg { flex: none; overflow: visible; }
+.hands .palm { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+.hands .fg rect { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+.hands .fg text { fill: var(--muted); font: 700 11px var(--font); text-anchor: middle; }
+.hands .fg { transition: transform .12s; }
+.hands .fg.on { transform: translateY(6px); }
+.hands .fg.on rect { fill: var(--target); stroke: var(--target); }
+.hands .fg.on text { fill: var(--on-color); }
+#hL .palm { stroke: var(--lh); }
+#hR .palm { stroke: var(--accent); }
+#handCap { min-width: 9em; font-size: 14px; }
+.want { display: flex; align-items: baseline; gap: 8px; color: var(--muted); }
+.want b { font-size: 26px; line-height: 1; color: var(--fg); min-width: 2.2em; font-weight: 700; }
+.judge { min-width: 9em; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.judge.ok { color: var(--ok); }
+.judge.warn { color: var(--target); }
+.judge.bad { color: var(--bad); }
+.prog { display: flex; align-items: center; gap: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.progbar { width: 120px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.progbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.heard { display: none; align-items: center; gap: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.heard.on { display: flex; }
+.heard b { color: var(--fg); min-width: 2.6em; font-size: 18px; }
+.meter { width: 90px; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; background: var(--ok); }
+.mic-opts { display: none; align-items: center; gap: 14px; color: var(--muted); }
+.mic-opts.on { display: flex; flex-wrap: wrap; }
+.mic-opts label { display: flex; align-items: center; gap: 6px; }
+.msg { color: var(--bad); flex-basis: 100%; min-height: 0; }
+.msg:empty { display: none; }
+
+.score { position: relative; flex: none; height: 128px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); overflow: hidden; }
+.score.grand { height: 228px; }
+.score[hidden] { display: none; }
+#staff { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.stage { position: relative; flex: 1; min-height: 300px; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--lane); }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+.done {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); width: min(420px, calc(100% - 32px));
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; text-align: center;
+  box-shadow: 0 12px 40px rgb(0 0 0 / .25);
+}
+.done[hidden] { display: none; }
+.done h2 { margin: 0 0 6px; font-size: 22px; }
+.done p { margin: 4px 0; color: var(--muted); }
+.done .row { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+.foot { color: var(--muted); font-size: 13px; }
+
+.modal { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgb(0 0 0 / .45); }
+.modal[hidden] { display: none; }
+.modal .card { width: min(500px, 100%); max-height: 100%; overflow: auto; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+.modal h2 { margin: 0; font-size: 20px; }
+.modal label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); }
+.modal input, .modal textarea, .modal select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-height: 44px; box-sizing: border-box; }
+.modal textarea { resize: vertical; min-height: 120px; }
+.modal .hint { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
+.modal .info { margin: 0; min-height: 1.4em; color: var(--ok); }
+.modal .info.err { color: var(--bad); }
+.modal .row { display: flex; gap: 10px; justify-content: flex-end; }
+@media (prefers-reduced-motion: reduce) { .progbar i, .hands .fg { transition: none; } }
+</style>
+
+<div class="app">
+  <header class="bar">
+    <h1>琴键跟弹</h1>
+    <label class="field"><span>曲目</span><select id="song"></select></label>
+    <div class="seg" role="group" aria-label="音符标注方式">
+      <button type="button" data-n="name" aria-pressed="true">键名</button>
+      <button type="button" data-n="num" aria-pressed="false">简谱</button>
+      <button type="button" data-n="solfege" aria-pressed="false">唱名</button>
+    </div>
+    <div class="seg" id="handSeg" role="group" aria-label="练习哪只手">
+      <button type="button" data-h="R" aria-pressed="true">右手</button>
+      <button type="button" data-h="L" aria-pressed="false">左手</button>
+      <button type="button" data-h="B" aria-pressed="false">双手</button>
+    </div>
+    <div class="seg" id="lhSeg" role="group" aria-label="左手弹法" hidden>
+      <button type="button" data-l="root" aria-pressed="true">根音</button>
+      <button type="button" data-l="chord" aria-pressed="false">和弦</button>
+    </div>
+    <div class="metro" role="group" aria-label="节拍器">
+      <button type="button" id="metroBtn" class="tog" aria-pressed="false">节拍器</button>
+      <button type="button" id="bpmDn" aria-label="慢一点">−</button>
+      <output id="bpmOut" for="bpmDn bpmUp">80</output><span class="unit">拍/分</span>
+      <button type="button" id="bpmUp" aria-label="快一点">+</button>
+      <select id="beats" aria-label="每小节拍数">
+        <option value="2">2 拍</option><option value="3">3 拍</option><option value="4" selected>4 拍</option>
+      </select>
+      <span class="bds" id="bds" aria-hidden="true"><i class="bd acc"></i><i class="bd"></i><i class="bd"></i><i class="bd"></i></span>
+      <button type="button" id="metroSnd" class="tog" aria-pressed="true">声音</button>
+    </div>
+    <div class="actions">
+      <button type="button" id="rhy" class="tog" aria-pressed="false">节奏模式</button>
+      <button type="button" id="go" class="primary" hidden>开始</button>
+      <button type="button" id="add">添加曲子</button>
+      <button type="button" id="delSong" hidden>删除这首</button>
+      <button type="button" id="stf" class="tog" aria-pressed="true">五线谱</button>
+      <button type="button" id="fing" class="tog" aria-pressed="true">指法</button>
+      <button type="button" id="demo">听示范</button>
+      <button type="button" id="restart">重来</button>
+      <button type="button" id="mic" class="tog" aria-pressed="false"><span class="dot"></span>麦克风听音</button>
+    </div>
+  </header>
+
+  <section class="status" aria-live="polite">
+    <div class="hands" id="handWrap">
+      <svg id="hL" viewBox="0 0 120 84" width="92" height="64" aria-hidden="true"></svg>
+      <svg id="hR" viewBox="0 0 120 84" width="92" height="64" aria-hidden="true"></svg>
+      <div id="handCap">手指提示</div>
+    </div>
+    <div class="want">现在弹 <b id="want">—</b></div>
+    <div class="judge" id="judge" role="status"></div>
+    <div class="prog"><span id="progText"></span><div class="progbar"><i id="progFill"></i></div></div>
+    <div class="heard" id="heard">听到 <b id="heardNote">—</b><div class="meter"><i id="lvl"></i></div></div>
+    <div class="mic-opts" id="micOpts">
+      <label for="sens">灵敏度 <input type="range" id="sens" min="1" max="6" value="3"></label>
+      <label for="anyOct"><input type="checkbox" id="anyOct" checked> 不分高低八度</label>
+    </div>
+    <div class="msg" id="msg" role="status"></div>
+  </section>
+
+  <div class="score" id="score"><canvas id="staff" aria-label="五线谱"></canvas></div>
+
+  <main class="stage" id="stage">
+    <canvas id="cv" aria-label="琴键和音符提示"></canvas>
+    <div class="done" id="done" hidden>
+      <h2>弹完了</h2>
+      <p id="doneText"></p>
+      <p id="doneBest"></p>
+      <div class="row">
+        <button type="button" class="primary" id="again">再弹一遍</button>
+        <button type="button" id="next">下一首</button>
+      </div>
+    </div>
+  </main>
+  <div class="foot">没有开麦克风时:点屏幕琴键(可以多指同时按),或用电脑键盘 A S D F G H J 弹最左边八度的白键,Q W E R T Y U 弹右边一个八度。</div>
+</div>
+
+<div class="modal" id="addModal" hidden>
+  <form class="card" id="addForm">
+    <h2>添加曲子</h2>
+    <label for="nm">曲名<input id="nm" type="text" maxlength="30" autocomplete="off" placeholder="例如 我的练习曲"></label>
+    <label for="tonic">调(1 = )
+      <select id="tonic">
+        <option value="0">C</option><option value="1">♭D</option><option value="2">D</option><option value="3">♭E</option>
+        <option value="4">E</option><option value="5">F</option><option value="6">♯F</option><option value="7">G</option>
+        <option value="8">♭A</option><option value="9">A</option><option value="10">♭B</option><option value="11">B</option>
+      </select>
+    </label>
+    <label for="txt">简谱<textarea id="txt" placeholder="例如:3 3 2 1 | 2 2 1 6, | ..."></textarea></label>
+    <p class="hint">写法:数字 1 到 7。高八度加 ' (如 1'),低八度加 , (如 6,),升半音前加 # (如 #4)。空格、竖线、横线和休止符 0 会被忽略。现在只管音高,每个音按 1 拍,左手伴奏会自动配和弦。建议找 C 调的简单版简谱,最好弹。</p>
+    <p class="info" id="addInfo" role="status"></p>
+    <div class="row">
+      <button type="button" id="addCancel">取消</button>
+      <button type="submit" class="primary" id="addSave">保存并开始</button>
+    </div>
+  </form>
+</div>
+
+<script>
+//<pitch>
+function detectPitch(buf, sr) {
+  var W = 2048, tauMin = Math.floor(sr / 1200), tauMax = Math.ceil(sr / 200);
+  var start = buf.length - W - tauMax - 1;
+  if (start < 0) return null;
+  var d = new Float32Array(tauMax + 2), tau, j, diff, sum;
+  for (tau = 1; tau <= tauMax + 1 && start + W + tau <= buf.length; tau++) {
+    sum = 0;
+    for (j = 0; j < W; j++) { diff = buf[start + j] - buf[start + j + tau]; sum += diff * diff; }
+    d[tau] = sum;
+  }
+  var cm = new Float32Array(tauMax + 2), run = 0;
+  cm[0] = 1;
+  for (tau = 1; tau <= tauMax + 1; tau++) {
+    run += d[tau];
+    cm[tau] = run === 0 ? 1 : d[tau] * tau / run;
+  }
+  var found = -1;
+  for (tau = tauMin; tau <= tauMax; tau++) {
+    if (cm[tau] < 0.12) {
+      while (tau + 1 <= tauMax && cm[tau + 1] < cm[tau]) tau++;
+      found = tau; break;
+    }
+  }
+  if (found < 0) return null;
+  var a = cm[found - 1], b = cm[found], c = cm[found + 1];
+  var den = a - 2 * b + c, shift = den !== 0 ? 0.5 * (a - c) / den : 0;
+  var freq = sr / (found + shift);
+  return { freq: freq, midi: 69 + 12 * Math.log2(freq / 440) };
+}
+// Are all of these notes sounding? db = analyser.getFloatFrequencyData() output. A note counts as present when its spectral
+// peak stands well above the noise floor and is not tiny next to the loudest peak (so one note's overtones don't pass as a chord).
+function chordPresent(db, sr, fftSize, midis, anyOct) {
+  var binHz = sr / fftSize, lo = Math.max(1, Math.floor(90 / binHz)), hi = Math.min(db.length - 2, Math.ceil(1500 / binHz));
+  var mags = [], i, mx = 0;
+  for (i = lo; i <= hi; i++) { var v = Math.pow(10, db[i] / 20); mags.push(v); if (v > mx) mx = v; }
+  var sorted = mags.slice().sort(function (a, b) { return a - b; });
+  var floor = sorted[Math.floor(sorted.length * 0.5)] || 1e-9;
+  function mag(k) { return Math.pow(10, db[k] / 20); }
+  // The peak must be a local maximum of its own, not just the skirt of a louder neighbouring note.
+  function peakAt(f) {
+    var c = Math.round(f / binHz), best = 0;
+    for (var k = c - 1; k <= c + 1; k++) {
+      if (k < lo + 2 || k > hi - 2) continue;
+      var v = mag(k);
+      if (v >= mag(k - 1) && v >= mag(k + 1) && v >= mag(k - 2) && v >= mag(k + 2)) best = Math.max(best, v);
+    }
+    return best;
+  }
+  return midis.every(function (m) {
+    var f = 440 * Math.pow(2, (m - 69) / 12), freqs = [];
+    if (anyOct) { for (var o = -3; o <= 3; o++) { var ff = f * Math.pow(2, o); if (ff >= 90 && ff <= 1500) freqs.push(ff); } }
+    else if (f >= 90 && f <= 1500) freqs.push(f);
+    return freqs.some(function (ff) { var p = peakAt(ff); return p > floor * 8 && p > mx * 0.15; });
+  });
+}
+//</pitch>
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var LET = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  var NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  var SOL = { C: 'do', D: 're', E: 'mi', F: 'fa', G: 'sol', A: 'la', B: 'si' };
+  var NUM = { C: '1', D: '2', E: '3', F: '4', G: '5', A: '6', B: '7' };
+  var FN = ['', '拇指', '食指', '中指', '无名指', '小指'];
+  var WHITE_STEP = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+  function m(n) { var sh = n[1] === '#' ? 1 : 0; return (parseInt(n.slice(1 + sh), 10) + 1) * 12 + LET[n[0]] + sh; }
+  function parse(s) { return s.split(' ').map(m); }
+  function fing(s) { return s.split(' ').map(Number); }
+  function rep(s, n) { return Array(n).fill(s).join(' '); }
+  function noteName(midi) { return NAMES[midi % 12] + (Math.floor(midi / 12) - 1); }
+  function whiteNo(midi) { return Math.floor(midi / 12) * 7 + WHITE_STEP[midi % 12]; }
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  /* ---------- songs ---------- */
+  var SONGS = [
+    { id: 'twinkle', title: '小星星', notes: parse('C4 C4 G4 G4 A4 A4 G4 F4 F4 E4 E4 D4 D4 C4 G4 G4 F4 F4 E4 E4 D4 G4 G4 F4 F4 E4 E4 D4 C4 C4 G4 G4 A4 A4 G4 F4 F4 E4 E4 D4 D4 C4'),
+      fing: fing('1 1 4 4 5 5 4 4 4 3 3 2 2 1 5 5 4 4 3 3 2 5 5 4 4 3 3 2 1 1 4 4 5 5 4 4 4 3 3 2 2 1') },
+    { id: 'ode', title: '欢乐颂', notes: parse('E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 E4 D4 D4 E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 D4 C4 C4'),
+      fing: fing('3 3 4 5 5 4 3 2 1 1 2 3 3 2 2 3 3 4 5 5 4 3 2 1 1 2 3 2 1 1') },
+    { id: 'tigers', title: '两只老虎(简化)', notes: parse('C4 D4 E4 C4 C4 D4 E4 C4 E4 F4 G4 E4 F4 G4 G4 A4 G4 F4 E4 C4 G4 A4 G4 F4 E4 C4 C4 G4 C4 C4 G4 C4'),
+      fing: fing('1 2 3 1 1 2 3 1 3 4 5 3 4 5 4 5 4 3 2 1 4 5 4 3 2 1 1 5 1 1 5 1') },
+    { id: 'mary', title: '玛丽有只小羊', notes: parse('E4 D4 C4 D4 E4 E4 E4 D4 D4 D4 E4 G4 G4 E4 D4 C4 D4 E4 E4 E4 E4 D4 D4 E4 D4 C4'),
+      fing: fing('3 2 1 2 3 3 3 2 2 2 3 5 5 3 2 1 2 3 3 3 3 2 2 3 2 1') },
+    { id: 'bun', title: '十字面包', notes: parse('E4 D4 C4 E4 D4 C4 C4 C4 C4 C4 D4 D4 D4 D4 E4 D4 C4'),
+      fing: fing('3 2 1 3 2 1 1 1 1 1 2 2 2 2 3 2 1') },
+    { id: 'row', title: '划船歌', notes: parse('C4 C4 C4 D4 E4 E4 D4 E4 F4 G4 C5 C5 C5 G4 G4 G4 E4 E4 E4 C4 C4 C4 G4 F4 E4 D4 C4') },
+    { id: 'london', title: '伦敦桥', notes: parse('G4 A4 G4 F4 E4 F4 G4 D4 E4 F4 E4 F4 G4 G4 A4 G4 F4 E4 F4 G4 D4 G4 E4 C4') },
+    { id: 'birthday', title: '生日快乐', notes: parse('G4 G4 A4 G4 C5 B4 G4 G4 A4 G4 D5 C5 G4 G4 G5 E5 C5 B4 A4 F5 F5 E5 C5 D5 C5') },
+    { id: 'silent', title: '平安夜(开头)', notes: parse('G4 A4 G4 E4 G4 A4 G4 E4 D5 D5 B4 C5 C5 G4') },
+    { id: 'canon', title: '卡农(开头)', notes: parse('E5 D5 C5 B4 A4 G4 A4 B4 C5 B4 A4 G4 F4 E4 F4 D4') },
+    { id: 'elise', title: '致爱丽丝(开头,含黑键)', noLH: true, notes: parse('E5 D#5 E5 D#5 E5 B4 D5 C5 A4 C4 E4 A4 B4 E4 G#4 B4 C5') }
+  ];
+  /* Note lengths in beats (quarter = 1), beats per bar, the beat inside the first bar where the melody starts (pickups). */
+  var RHY = {
+    twinkle: { bar: 4, dur: rep('1 1 1 1 1 1 2', 6) },
+    ode: { bar: 4, dur: rep('1', 12) + ' 1.5 0.5 2 ' + rep('1', 12) + ' 1.5 0.5 2' },
+    tigers: { bar: 4, dur: rep('1', 8) + ' 1 1 2 1 1 2 ' + rep('0.5 0.5 0.5 0.5 1 1', 2) + ' 1 1 2 1 1 2' },
+    mary: { bar: 4, dur: '1 1 1 1 1 1 2 1 1 2 1 1 2 1 1 1 1 1 1 1 1 1 1 1 1 4' },
+    row: { bar: 3, dur: '1.5 1.5 1 0.5 1.5 1 0.5 1 0.5 3 ' + rep('0.5', 12) + ' 1 0.5 1 0.5 3' },
+    birthday: { bar: 3, start: 2, dur: '0.75 0.25 1 1 1 2 0.75 0.25 1 1 1 2 0.75 0.25 1 1 1 1 1 0.75 0.25 1 1 1 2' },
+    bun: { bar: 4, dur: '1 1 2 1 1 2 ' + rep('0.5', 8) + ' 1 1 2' },
+    london: { bar: 4, dur: '1.5 0.5 1 1 1 1 2 1 1 2 1 1 2 1.5 0.5 1 1 1 1 2 2 2 2 2' },
+    silent: { bar: 3, dur: '1.5 0.5 1 3 1.5 0.5 1 3 2 1 3 2 1 3' }
+  };
+  /* Left-hand chords, one token per bar ('+' splits a bar evenly, '_' = no chord). My own simple harmonisations. */
+  var PROG = {
+    twinkle: 'C | F+C | F+C | G+C | C+F | C+G | C+F | C+G | C | F+C | F+C | G+C',
+    ode: 'C | C+G | C+G | C+G | C | C+G | C+G | G+C',
+    tigers: 'C | C | C | C | F+C | F+C | C | C',
+    mary: 'C | C | G | C | C | C | G | C',
+    row: 'C | C | C | C | C | C | G | C',
+    birthday: '_ | C | G | G | C | C | F | G | C',
+    bun: 'C | C | C | C',
+    london: 'C | C | G | C | C | C | G | C',
+    silent: 'C | C | C | C | G | G | C | C',
+    canon: 'C+G | Am+Em | F+C | F+G'
+  };
+  var DEG = { C: 'I', F: 'IV', G: 'V', Am: 'vi', Dm: 'ii', Em: 'iii' };
+  var DEGROOT = { I: 0, IV: 5, V: 7, vi: 9, ii: 2, iii: 4 };
+  var DEGMIN = { vi: 1, ii: 1, iii: 1 };
+  var DEGPC = { I: [0, 4, 7], IV: [5, 9, 0], V: [7, 11, 2], vi: [9, 0, 4], ii: [2, 5, 9], iii: [4, 7, 11] };
+  var DEGPREF = { I: 0.3, V: 0.2, IV: 0.15, vi: 0.1, ii: 0.05, iii: 0 };
+  /* Close-position left-hand voicings kept low (key of C), plus the single bass root for each chord. */
+  var VOIC = { I: [48, 52, 55], IV: [48, 53, 57], V: [47, 50, 55], vi: [48, 52, 57], ii: [50, 53, 57], iii: [47, 52, 55] };
+  var ROOTM = { I: 48, IV: 53, V: 43, vi: 45, ii: 50, iii: 52 };
+
+  SONGS.forEach(function (s) {
+    var r = RHY[s.id];
+    if (r) { s.dur = r.dur.split(' ').map(Number); s.bar = r.bar; s.start = r.start || 0; }
+    s.tonic = 0;
+  });
+
+  function autoFing(notes) {
+    var out = [], anchor = null;
+    notes.forEach(function (n, i) {
+      var w = whiteNo(n);
+      if (anchor === null || w < anchor || w > anchor + 4) {
+        var nx = i + 1 < notes.length ? whiteNo(notes[i + 1]) : w;
+        anchor = nx < w ? w - 4 : w;
+      }
+      out.push(Math.max(1, Math.min(5, w - anchor + 1)));
+    });
+    return out;
+  }
+  function parseProg(s) {
+    var out = [];
+    PROG[s.id].split('|').forEach(function (tok, k) {
+      tok = tok.trim();
+      if (tok === '_' || !tok) return;
+      var parts = tok.split('+');
+      parts.forEach(function (nm, j) {
+        out.push({ on: k * s.bar + j * s.bar / parts.length, dur: s.bar / parts.length, deg: DEG[nm], name: nm });
+      });
+    });
+    return out;
+  }
+  function autoHarmonize(s) {
+    var evs = [], t = s.start, out = [], prev = null;
+    s.notes.forEach(function (n, i) { evs.push({ on: t, d: s.dur[i], pc: ((n - 60 - s.tonic) % 12 + 12) % 12 }); t += s.dur[i]; });
+    var bars = Math.ceil(t / s.bar);
+    for (var k = 0; k < bars; k++) {
+      var a = k * s.bar, b = a + s.bar;
+      var inBar = evs.filter(function (e) { return e.on < b && e.on + e.d > a; });
+      if (!inBar.length) continue;
+      var best = null, bestSc = -1;
+      Object.keys(DEGPC).forEach(function (dg) {
+        var sc = DEGPREF[dg] + (dg === prev ? 0.15 : 0);
+        inBar.forEach(function (e, ix) {
+          var ov = Math.min(e.on + e.d, b) - Math.max(e.on, a);
+          if (DEGPC[dg].indexOf(e.pc) >= 0) sc += ov * (ix === 0 ? 1.5 : 1);
+        });
+        if (sc > bestSc) { bestSc = sc; best = dg; }
+      });
+      prev = best;
+      var pc = (s.tonic + DEGROOT[best]) % 12;
+      out.push({ on: a, dur: s.bar, deg: best, name: NAMES[pc] + (DEGMIN[best] ? 'm' : '') });
+    }
+    return out;
+  }
+  function prepareSong(s) {
+    if (!s.fing) { s.fing = autoFing(s.notes); s.auto = true; }
+    if (!s.dur) s.dur = s.notes.map(function () { return 1; });
+    if (!s.bar) s.bar = 4;
+    if (s.start == null) s.start = 0;
+    if (s.tonic == null) s.tonic = 0;
+    if (!s.chords) s.chords = PROG[s.id] ? parseProg(s) : s.noLH ? [] : autoHarmonize(s);
+  }
+
+  /* A "view" is the list of events to practise: right-hand notes, left-hand bass/chords, or both merged by onset.
+     Each event has an onset (beats from bar 1) and tones {m: midi, d: length, f: finger, h: 'R'|'L'}. */
+  function mergeEv(a, b) {
+    var map = {}, keys = [];
+    a.concat(b).forEach(function (e) {
+      var k = Math.round(e.on * 1000);
+      if (!map[k]) { map[k] = { on: e.on, tones: [], name: '' }; keys.push(k); }
+      map[k].tones = map[k].tones.concat(e.tones);
+      if (e.name) map[k].name = e.name;
+    });
+    keys.sort(function (x, y) { return x - y; });
+    return keys.map(function (k) { return map[k]; });
+  }
+  function buildView(s, hnd, style) {
+    var rh = [], t = s.start, shift = s.tonic > 6 ? s.tonic - 12 : s.tonic;
+    s.notes.forEach(function (n, i) { rh.push({ on: t, tones: [{ m: n, d: s.dur[i], f: s.fing[i], h: 'R' }] }); t += s.dur[i]; });
+    var lh = s.chords.map(function (c) {
+      var tones = style === 'root'
+        ? [{ m: ROOTM[c.deg] + shift, d: c.dur, f: 5, h: 'L' }]
+        : VOIC[c.deg].map(function (v, k) { return { m: v + shift, d: c.dur, f: [5, 3, 1][k], h: 'L' }; });
+      return { on: c.on, tones: tones, name: c.name };
+    });
+    var ev = hnd === 'R' ? rh : hnd === 'L' ? lh : mergeEv(rh, lh), end = 0;
+    ev.forEach(function (e) { e.tones.forEach(function (x) { end = Math.max(end, e.on + x.d); }); });
+    return { events: ev, bar: s.bar, end: end, hand: hnd };
+  }
+  function viewRange(v) {
+    var lo = 127, hi = 0;
+    v.events.forEach(function (e) { e.tones.forEach(function (t) { lo = Math.min(lo, t.m); hi = Math.max(hi, t.m); }); });
+    var low = Math.floor(lo / 12) * 12;
+    return { lo: lo, hi: hi, low: low, octs: Math.max(2, Math.ceil((hi - low + 1) / 12)) };
+  }
+  function evText(ev) {
+    var r = ev.tones.filter(function (t) { return t.h === 'R'; }).map(function (t) { return labelText(t.m); }).join(' ');
+    var l = ev.tones.filter(function (t) { return t.h === 'L'; });
+    var ls = l.length ? (ev.name ? ev.name + (l.length > 1 ? ' 和弦' : ' 根音') : l.map(function (t) { return labelText(t.m); }).join(' ')) : '';
+    return [ls, r].filter(Boolean).join(' + ') || '—';
+  }
+
+  /* ---------- state ---------- */
+  var song = SONGS[0], view = { events: [], bar: 4, end: 0, hand: 'R' };
+  var hand = lsGet('qj_hand') || 'R', lhs = lsGet('qj_lhs') || 'root';
+  if (['R', 'L', 'B'].indexOf(hand) < 0) hand = 'R';
+  if (['root', 'chord'].indexOf(lhs) < 0) lhs = 'root';
+  var idx = 0, pos = 0, shown = 0, firstTry = 0, wrong = false, done = false, recent = {};
+  var rhy = { on: false, running: false, t0: 0, onset: [], res: [], end: 0, wrong: 0, lastTI: -2 };
+  var showFing = lsGet('qj_fing') !== '0';
+  var staffOn = lsGet('qj_staff') !== '0';
+  var notation = lsGet('qj_notation') || 'name';
+  if (['name', 'num', 'solfege'].indexOf(notation) < 0) notation = 'name';
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var demoTimer = null, demoI = 0, ignoreUntil = 0, micOn = false, curTI = -1;
+
+  /* ---------- audio ---------- */
+  var AC = null;
+  function audio() {
+    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended') AC.resume();
+    return AC;
+  }
+  function play(midi, dur) {
+    dur = dur || 0.6;
+    var c = audio(), t = c.currentTime, f = 440 * Math.pow(2, (midi - 69) / 12);
+    var g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur + 0.3);
+    var o1 = c.createOscillator(); o1.type = 'triangle'; o1.frequency.value = f;
+    var o2 = c.createOscillator(); o2.type = 'sine'; o2.frequency.value = f * 2;
+    var g2 = c.createGain(); g2.gain.value = 0.25;
+    o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(c.destination);
+    o1.start(t); o2.start(t); o1.stop(t + dur + 0.35); o2.stop(t + dur + 0.35);
+  }
+
+  /* ---------- keyboard geometry (2 to 4 octaves, starting on a C) ---------- */
+  var LOW = 60, whites = [], blacks = [], wi = {}, KEYS = {};
+  function buildKeys(low, octs) {
+    LOW = low; whites = []; blacks = []; wi = {}; KEYS = {};
+    for (var n = low; n < low + octs * 12; n++) {
+      if ([0, 2, 4, 5, 7, 9, 11].indexOf(n % 12) >= 0) { wi[n] = whites.length; whites.push(n); }
+      else blacks.push(n);
+    }
+    var off = [0, 2, 4, 5, 7, 9, 11];
+    'asdfghj'.split('').forEach(function (k, i) { KEYS[k] = low + off[i]; });
+    'qwertyu'.split('').forEach(function (k, i) { KEYS[k] = low + 12 + off[i]; });
+  }
+  buildKeys(60, 2);
+  var W = 0, H = 0, kw = 0, kbH = 0, kbTop = 0, bw = 0, bh = 0, laneH = 0, dpr = 1;
+  var cv = $('cv'), cx = cv.getContext('2d');
+  function layout() {
+    var r = $('stage').getBoundingClientRect();
+    W = Math.max(300, r.width); H = Math.max(260, r.height);
+    dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    kw = W / whites.length;
+    kbH = Math.max(140, Math.min(300, H * 0.42));
+    kbTop = H - kbH; laneH = kbTop;
+    bw = kw * 0.58; bh = kbH * 0.6;
+  }
+  function centerX(midi) {
+    return wi[midi] !== undefined ? (wi[midi] + 0.5) * kw : (wi[midi - 1] + 1) * kw;
+  }
+  function hit(x, y) {
+    if (y < kbTop || x < 0 || x > W) return null;
+    for (var i = 0; i < blacks.length; i++) {
+      var b = blacks[i];
+      if (Math.abs(x - centerX(b)) < bw / 2 && y < kbTop + bh) return b;
+    }
+    return whites[Math.max(0, Math.min(whites.length - 1, Math.floor(x / kw)))];
+  }
+
+  /* ---------- colors from CSS tokens ---------- */
+  var col = {};
+  function refreshColors() {
+    var cs = getComputedStyle(document.documentElement);
+    ['panel', 'lane', 'line', 'key', 'key-edge', 'key-text', 'black', 'accent', 'lh', 'on-accent', 'target', 'ok', 'bad', 'on-color', 'fg', 'muted']
+      .forEach(function (k) { col[k] = cs.getPropertyValue('--' + k).trim(); });
+    col.font = cs.getPropertyValue('--font').trim();
+  }
+  refreshColors();
+  if (window.matchMedia) {
+    var mq = matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', refreshColors);
+  }
+  new MutationObserver(refreshColors).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  function handColor(h) { return h === 'L' ? col.lh : col.accent; }
+
+  /* ---------- note labels ---------- */
+  function labelText(midi) {
+    var l = NAMES[midi % 12], b = l[0], sh = l.length > 1 ? '#' : '';
+    if (notation === 'num') return sh + NUM[b];
+    if (notation === 'solfege') return SOL[b] + sh;
+    return l;
+  }
+  function drawLabel(midi, x, y, size, color, oct) {
+    cx.fillStyle = color; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.font = '700 ' + size + 'px ' + col.font;
+    var t = labelText(midi);
+    if (oct && notation === 'name' && midi % 12 === 0) t += String(Math.floor(midi / 12) - 1);
+    cx.fillText(t, x, y);
+    if (notation === 'num') {
+      var dots = midi >= 84 ? 2 : midi >= 72 ? 1 : midi < 48 ? -2 : midi < 60 ? -1 : 0, r = Math.max(2, size * 0.09);
+      for (var d = 0; d < Math.abs(dots); d++) {
+        cx.beginPath();
+        cx.arc(x, dots > 0 ? y - size * 0.78 - d * size * 0.25 : y + size * 0.78 + d * size * 0.25, r, 0, 6.283);
+        cx.fill();
+      }
+    }
+  }
+  function rr(x, y, w, h, tl, br) {
+    cx.beginPath();
+    cx.moveTo(x + tl, y); cx.lineTo(x + w - tl, y); cx.quadraticCurveTo(x + w, y, x + w, y + tl);
+    cx.lineTo(x + w, y + h - br); cx.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
+    cx.lineTo(x + br, y + h); cx.quadraticCurveTo(x, y + h, x, y + h - br);
+    cx.lineTo(x, y + tl); cx.quadraticCurveTo(x, y, x + tl, y); cx.closePath();
+  }
+  function badge(x, y, r, text) {
+    cx.beginPath(); cx.arc(x, y, r, 0, 6.283); cx.fillStyle = col.panel; cx.fill();
+    cx.strokeStyle = col.line; cx.lineWidth = 1; cx.stroke();
+    cx.fillStyle = col.fg; cx.font = '700 ' + Math.round(r * 1.2) + 'px ' + col.font; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillText(String(text), x, y + 0.5);
+  }
+
+  /* ---------- feedback state ---------- */
+  var flashes = {}, held = {};
+  function flash(midi, kind, ms) { flashes[midi] = { kind: kind, until: performance.now() + ms }; }
+  function keyColor(midi, now) {
+    var f = flashes[midi];
+    if (f && f.until > now) return f.kind === 'ok' ? col.ok : f.kind === 'bad' ? col.bad : col.accent;
+    for (var id in held) if (held[id] === midi) return col.accent;
+    if (curTI >= 0 && view.events[curTI].tones.some(function (t) { return t.m === midi; })) return col.target;
+    return null;
+  }
+
+  /* ---------- render: lane + keyboard ---------- */
+  function drawBlock(tone, x, top, bottom, bwid, isCur, alpha, txtColor) {
+    rr(x, top, bwid, bottom - top, 8, 8);
+    cx.globalAlpha = alpha;
+    if (isCur) { cx.fillStyle = col.target; cx.fill(); }
+    else {
+      var hc = handColor(tone.h);
+      cx.globalAlpha = alpha * 0.3; cx.fillStyle = hc; cx.fill();
+      cx.globalAlpha = alpha; cx.strokeStyle = hc; cx.lineWidth = 1.5; cx.stroke();
+    }
+    cx.globalAlpha = alpha;
+    var h = bottom - top;
+    if (h >= 22) drawLabel(tone.m, x + bwid / 2, bottom - Math.min(h / 2, 18), Math.min(24, h * 0.5), txtColor);
+    if (showFing && h >= 40 && tone.f) badge(x + bwid - 12, top + 12, 10, tone.f);
+    cx.globalAlpha = 1;
+  }
+  function drawLaneWait() {
+    var step = (laneH - 14) / 6.2, bwid = kw * 0.8, n = view.events.length;
+    for (var s = Math.max(0, Math.floor(pos) - 1); s <= Math.min(n - 1, Math.ceil(pos) + 6); s++) {
+      var rel = s - pos;
+      if (rel < -1 || rel > 6) continue;
+      var bottom = laneH - 8 - rel * step, top = bottom - step * 0.86;
+      var alpha = rel < 0 ? 1 + rel : Math.max(0.35, 1 - rel * 0.1);
+      var isCur = Math.abs(rel) < 0.5 && !done;
+      view.events[s].tones.forEach(function (t) {
+        drawBlock(t, centerX(t.m) - bwid / 2, top, bottom, bwid, isCur, Math.max(0, alpha), isCur ? col['on-color'] : col.fg);
+      });
+    }
+  }
+  function drawRhythm() {
+    var b = beatNow(), hitY = laneH - 6, ppb = (laneH - 24) / 6, bwid = kw * 0.8, k, y;
+    cx.save(); cx.beginPath(); cx.rect(0, 0, W, laneH); cx.clip();
+    cx.strokeStyle = col.line;
+    for (k = Math.floor(b) - 1; k <= Math.ceil(b) + 8; k++) {
+      y = hitY - (k - b) * ppb;
+      if (y < 0 || y > laneH) continue;
+      var strong = k >= 0 && k % view.bar === 0;
+      cx.globalAlpha = strong ? 0.95 : 0.45; cx.lineWidth = strong ? 2 : 1;
+      cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke();
+    }
+    cx.globalAlpha = 1;
+    for (var i = 0; i < view.events.length; i++) {
+      var ev = view.events[i], r = rhy.res[i], bottom = hitY - (rhy.onset[i] - b) * ppb;
+      for (var q = 0; q < ev.tones.length; q++) {
+        var t = ev.tones[q], h = Math.max(16, t.d * ppb - 4), top = bottom - h;
+        if (bottom < -4 || top > laneH) continue;
+        var x = centerX(t.m) - bwid / 2;
+        if (r && r.s === 'miss') {
+          rr(x, top, bwid, h, 8, 8); cx.globalAlpha = 0.3; cx.fillStyle = col.bad; cx.fill(); cx.globalAlpha = 1;
+          if (h >= 22) drawLabel(t.m, x + bwid / 2, bottom - Math.min(h / 2, 18), Math.min(24, h * 0.5), col.muted);
+        } else if (r) {
+          rr(x, top, bwid, h, 8, 8); cx.fillStyle = col.ok; cx.fill();
+          if (h >= 22) drawLabel(t.m, x + bwid / 2, bottom - Math.min(h / 2, 18), Math.min(24, h * 0.5), col['on-color']);
+        } else {
+          drawBlock(t, x, top, bottom, bwid, i === curTI, 1, i === curTI ? col['on-color'] : col.fg);
+        }
+      }
+    }
+    cx.strokeStyle = col.target; cx.lineWidth = 3;
+    cx.beginPath(); cx.moveTo(0, hitY); cx.lineTo(W, hitY); cx.stroke();
+    cx.restore();
+  }
+  function render(now) {
+    curTI = targetIdx();
+    cx.clearRect(0, 0, W, H);
+    cx.fillStyle = col.lane; cx.fillRect(0, 0, W, laneH);
+    cx.strokeStyle = col.line; cx.globalAlpha = 0.6; cx.lineWidth = 1;
+    for (var i = 1; i < whites.length; i++) { cx.beginPath(); cx.moveTo(i * kw, 0); cx.lineTo(i * kw, laneH); cx.stroke(); }
+    cx.globalAlpha = 1;
+    if (rhy.on) drawRhythm(); else drawLaneWait();
+
+    var pulse = reduce ? 1 : 0.8 + 0.2 * Math.sin(now / 260);
+    for (var w = 0; w < whites.length; w++) {
+      var wm = whites[w], kc = keyColor(wm, now), x0 = w * kw + 1;
+      rr(x0, kbTop, kw - 2, kbH - 2, 2, 8);
+      cx.fillStyle = kc || col.key;
+      if (kc === col.target) cx.globalAlpha = pulse;
+      cx.fill(); cx.globalAlpha = 1;
+      cx.strokeStyle = col['key-edge']; cx.lineWidth = 1; cx.stroke();
+      var lblSize = Math.max(11, Math.min(24, kw * 0.34));
+      drawLabel(wm, x0 + (kw - 2) / 2, kbTop + kbH - 22, lblSize, kc ? col['on-color'] : col['key-text'], true);
+      if (wm === 60 && kw >= 34) {
+        cx.fillStyle = kc ? col['on-color'] : col['key-text']; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+        cx.font = '500 ' + Math.max(10, Math.min(13, kw * 0.2)) + 'px ' + col.font;
+        cx.fillText('中央C', x0 + (kw - 2) / 2, kbTop + kbH - 50);
+      }
+    }
+    for (var b = 0; b < blacks.length; b++) {
+      var bm = blacks[b], bc = keyColor(bm, now), bx = centerX(bm) - bw / 2;
+      rr(bx, kbTop, bw, bh, 2, 6);
+      cx.fillStyle = bc || col.black; cx.fill();
+      cx.strokeStyle = col['key-edge']; cx.lineWidth = 1; cx.globalAlpha = 0.5; cx.stroke(); cx.globalAlpha = 1;
+    }
+    if (showFing && curTI >= 0) {
+      view.events[curTI].tones.forEach(function (t) {
+        if (t.f) badge(centerX(t.m), kbTop + bh + 14, Math.min(12, kw * 0.22), t.f);
+      });
+    }
+  }
+
+  var last = performance.now();
+  function frame(t) {
+    var dt = Math.min(0.05, (t - last) / 1000); last = t;
+    shown = demoTimer ? demoI : idx;
+    pos += (shown - pos) * (reduce ? 1 : 1 - Math.exp(-dt * 12));
+    if (Math.abs(shown - pos) < 0.001) pos = shown;
+    if (rhy.on) rhyTick();
+    render(t);
+    if (staffOn) drawStaff();
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- hand diagrams ---------- */
+  var FG = [{ n: 1, x: 2, y: 38, h: 34 }, { n: 2, x: 24, y: 16, h: 48 }, { n: 3, x: 44, y: 8, h: 56 }, { n: 4, x: 64, y: 14, h: 50 }, { n: 5, x: 84, y: 28, h: 36 }];
+  function buildHand(svg, left) {
+    var ns = 'http://www.w3.org/2000/svg';
+    function el(tag, attrs) { var e = document.createElementNS(ns, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+    svg.appendChild(el('rect', { class: 'palm', x: 8, y: 46, width: 104, height: 36, rx: 14 }));
+    FG.forEach(function (f) {
+      var x = left ? 120 - f.x - 17 : f.x, g = el('g', { class: 'fg', 'data-f': f.n });
+      g.appendChild(el('rect', { x: x, y: f.y, width: 17, height: f.h, rx: 8.5 }));
+      var tx = el('text', { x: x + 8.5, y: f.y + 14 }); tx.textContent = f.n; g.appendChild(tx);
+      svg.appendChild(g);
+    });
+  }
+  buildHand($('hL'), true); buildHand($('hR'), false);
+  function setHands(ev) {
+    var fs = { L: [], R: [] };
+    if (ev) ev.tones.forEach(function (t) { if (t.f) fs[t.h].push(t.f); });
+    ['L', 'R'].forEach(function (h) {
+      document.querySelectorAll('#h' + h + ' .fg').forEach(function (g) { g.classList.toggle('on', fs[h].indexOf(+g.dataset.f) >= 0); });
+    });
+    var parts = [];
+    if (fs.L.length) parts.push('左手 ' + fs.L.join('·') + ' 指' + (fs.L.length === 1 ? ' ' + FN[fs.L[0]] : ''));
+    if (fs.R.length) parts.push('右手 ' + fs.R.join('·') + ' 指' + (fs.R.length === 1 ? ' ' + FN[fs.R[0]] : ''));
+    $('handCap').textContent = parts.join(',') + (parts.length && (song.custom || song.auto) && fs.R.length ? '(自动)' : '') || '手指提示';
+  }
+
+  /* ---------- game logic ---------- */
+  function updateStatus() {
+    if (!view.events.length) return;
+    if (rhy.on) {
+      rhyProgress();
+      if (!rhy.running) { $('want').textContent = '—'; setHands(null); }
+      return;
+    }
+    var n = view.events.length;
+    $('progText').textContent = done ? '完成' : '第 ' + Math.min(idx + 1, n) + ' / ' + n + ' 步';
+    $('progFill').style.width = (done ? 100 : (idx / n) * 100) + '%';
+    $('want').textContent = done || demoTimer ? '—' : evText(view.events[idx]);
+    setHands(done ? null : demoTimer ? view.events[demoI - 1] : view.events[idx]);
+  }
+  function resetSong() {
+    rhyStop(); buildTimeline();
+    idx = 0; pos = 0; firstTry = 0; wrong = false; done = false; recent = {};
+    $('done').hidden = true; setJudge('', ''); updateStatus();
+  }
+  function bestKey() { return 'qj_best_' + song.id + (hand === 'R' ? '' : '_' + hand + lhs); }
+  function finish() {
+    done = true;
+    var n = view.events.length, pct = Math.round((firstTry / n) * 100);
+    var prev = parseInt(lsGet(bestKey()) || '-1', 10);
+    if (pct > prev) lsSet(bestKey(), String(pct));
+    $('doneText').textContent = n + ' 步里,一次就弹对了 ' + firstTry + ' 步(' + pct + '%)';
+    $('doneBest').textContent = pct > prev ? '这是你在这个练法上的最好成绩' : '最好成绩 ' + prev + '%';
+    $('done').hidden = false;
+  }
+  function matchP(a, b, src) { return (src === 'mic' && $('anyOct').checked) ? a % 12 === b % 12 : a === b; }
+  function inTones(ev, midi, src) { return ev.tones.some(function (t) { return matchP(midi, t.m, src); }); }
+  function satisfied(ev, win, now) {
+    return ev.tones.every(function (t) {
+      for (var k in recent) { var r = recent[k]; if (now - r.t <= win && matchP(+k, t.m, r.src)) return true; }
+      return false;
+    });
+  }
+  /* Every key press (screen, computer keyboard, or heard by the microphone) comes through here. */
+  function attempt(midis, src) {
+    if (demoTimer) return;
+    var now = performance.now();
+    midis.forEach(function (mm) { recent[mm] = { t: now, src: src }; });
+    if (rhy.on) { if (rhy.running) rhyAttempt(midis, src, now); return; }
+    if (done) return;
+    var ev = view.events[idx];
+    var bad = midis.filter(function (mm) { return !inTones(ev, mm, src); });
+    if (bad.length) { wrong = true; bad.forEach(function (mm) { flash(mm, 'bad', 350); }); return; }
+    if (satisfied(ev, 3000, now)) {
+      ev.tones.forEach(function (t) { flash(t.m, 'ok', 350); });
+      if (!wrong) firstTry++;
+      wrong = false; idx++; recent = {};
+      if (idx >= view.events.length) finish();
+      updateStatus();
+    } else midis.forEach(function (mm) { flash(mm, 'demo', 250); });
+  }
+
+  /* ---------- demo playback ---------- */
+  function stopDemo() {
+    clearTimeout(demoTimer); demoTimer = null; $('demo').textContent = '听示范';
+    ignoreUntil = performance.now() + 600; updateStatus();
+  }
+  function runDemo() {
+    if (demoTimer) { stopDemo(); return; }
+    resetSong(); demoI = 0; $('demo').textContent = '停止';
+    (function step() {
+      if (demoI >= view.events.length) { stopDemo(); return; }
+      var ev = view.events[demoI++];
+      ev.tones.forEach(function (t) { play(t.m, Math.min(1.2, 0.45 + t.d * 0.15)); flash(t.m, 'demo', 500); });
+      setHands(ev);
+      ignoreUntil = performance.now() + 900;
+      var nx = view.events[demoI];
+      var gap = nx ? nx.on - ev.on : Math.max.apply(null, ev.tones.map(function (t) { return t.d; }));
+      demoTimer = setTimeout(step, Math.max(120, gap * 60000 / metro.bpm));
+    })();
+    updateStatus();
+  }
+
+  /* ---------- screen + computer keyboard input ---------- */
+  cv.addEventListener('pointerdown', function (e) {
+    var r = cv.getBoundingClientRect(), midi = hit(e.clientX - r.left, e.clientY - r.top);
+    if (midi == null) return;
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+    held[e.pointerId] = midi;
+    if (!micOn) play(midi, 0.6);
+    attempt([midi], 'tap');
+  });
+  function release(e) { delete held[e.pointerId]; }
+  cv.addEventListener('pointerup', release);
+  cv.addEventListener('pointercancel', release);
+  var down = {};
+  document.addEventListener('keydown', function (e) {
+    var t = e.target && e.target.tagName;
+    if (t === 'SELECT' || t === 'INPUT' || t === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+    var midi = KEYS[e.key.toLowerCase()];
+    if (midi == null || down[e.code]) return;
+    down[e.code] = true;
+    if (!micOn) play(midi, 0.6);
+    flash(midi, 'demo', 150);
+    attempt([midi], 'tap');
+  });
+  document.addEventListener('keyup', function (e) { delete down[e.code]; });
+
+  /* ---------- microphone listening ---------- */
+  var stream = null, an = null, buf = null, fdb = null, micTimer = null;
+  var armed = true, minR = 1, lastMidi = null, stable = 0, stableC = 0;
+  function showMsg(t) { $('msg').textContent = t || ''; }
+  function setMicUI(on) {
+    micOn = on;
+    $('mic').setAttribute('aria-pressed', on ? 'true' : 'false');
+    $('mic').lastChild.textContent = on ? '麦克风:已开' : '麦克风听音';
+    $('heard').classList.toggle('on', on);
+    $('micOpts').classList.toggle('on', on);
+    if (!on) { $('heardNote').textContent = '—'; $('lvl').style.width = '0'; }
+  }
+  function stopMic() {
+    clearInterval(micTimer); micTimer = null;
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null; an = null; setMicUI(false);
+  }
+  async function startMic() {
+    showMsg('');
+    var md = navigator.mediaDevices;
+    if (!md || !md.getUserMedia) {
+      showMsg('这个页面打不开麦克风(需要 https 网址或本机地址)。先用屏幕琴键,或看下方说明。');
+      return;
+    }
+    try {
+      var c = audio();
+      stream = await md.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      var src = c.createMediaStreamSource(stream);
+      an = c.createAnalyser(); an.fftSize = 8192; an.smoothingTimeConstant = 0.3; src.connect(an);
+      buf = new Float32Array(an.fftSize); fdb = new Float32Array(an.frequencyBinCount);
+    } catch (e) {
+      stopMic();
+      showMsg('麦克风没有打开:没有授权,或当前页面不允许使用麦克风。可以先点屏幕琴键。');
+      return;
+    }
+    armed = true; minR = 1; lastMidi = null; stable = 0; stableC = 0;
+    setMicUI(true);
+    if (metro.sound) { metro.sound = false; syncMetroUI(); }
+    micTimer = setInterval(micTick, 40);
+  }
+  function micTick() {
+    if (!an) return;
+    an.getFloatTimeDomainData(buf);
+    var s = 0, i, n = 2048;
+    for (i = buf.length - n; i < buf.length; i++) s += buf[i] * buf[i];
+    var rms = Math.sqrt(s / n), now = performance.now();
+    $('lvl').style.width = Math.min(100, rms * 600) + '%';
+    var gate = 0.03 / parseFloat($('sens').value);
+    if (demoTimer || now < ignoreUntil) { stable = 0; stableC = 0; lastMidi = null; return; }
+    minR = Math.min(minR, rms);
+    if (!armed && (rms < gate * 0.6 || rms > minR * 1.7 + gate * 0.5)) armed = true;
+    if (rms < gate) { $('heardNote').textContent = '—'; stable = 0; stableC = 0; lastMidi = null; return; }
+    var ti = targetIdx(), ev = ti >= 0 ? view.events[ti] : null;
+    if (ev && ev.tones.length > 1) {
+      an.getFloatFrequencyData(fdb);
+      var ok = chordPresent(fdb, AC.sampleRate, an.fftSize, ev.tones.map(function (t) { return t.m; }), $('anyOct').checked);
+      $('heardNote').textContent = ok ? '齐了' : '…';
+      stableC = ok ? stableC + 1 : 0;
+      if (stableC >= 3 && armed) {
+        armed = false; minR = rms; stableC = 0;
+        attempt(ev.tones.map(function (t) { return t.m; }), 'mic');
+      }
+      return;
+    }
+    var r = detectPitch(buf, AC.sampleRate);
+    if (!r) { stable = 0; lastMidi = null; return; }
+    var midi = Math.round(r.midi);
+    if (Math.abs(r.midi - midi) > 0.4) { stable = 0; return; }
+    if (midi === lastMidi) stable++; else { lastMidi = midi; stable = 1; }
+    $('heardNote').textContent = noteName(midi);
+    if (!ev || done) return;
+    var match = inTones(ev, midi, 'mic');
+    if (match && stable >= 2 && armed) { armed = false; minR = rms; attempt([midi], 'mic'); }
+    else if (!match && stable === 4 && armed) attempt([midi], 'mic');
+  }
+
+  /* ---------- metronome ---------- */
+  var metro = { on: false, bpm: parseInt(lsGet('qj_bpm') || '80', 10), beats: 4, sound: true, next: 0, beat: 0, timer: null };
+  if (!(metro.bpm >= 40 && metro.bpm <= 160)) metro.bpm = 80;
+  function syncMetroUI() {
+    $('metroBtn').setAttribute('aria-pressed', metro.on ? 'true' : 'false');
+    $('metroSnd').setAttribute('aria-pressed', metro.sound ? 'true' : 'false');
+    $('bpmOut').textContent = metro.bpm;
+    document.querySelectorAll('#bds .bd').forEach(function (d, i) { d.hidden = i >= metro.beats; });
+  }
+  function clickAt(t, accent) {
+    var c = AC, o = c.createOscillator(), g = c.createGain();
+    o.type = 'square'; o.frequency.value = accent ? 1600 : 1100;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(accent ? 0.25 : 0.16, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.06);
+  }
+  function dotAt(b, delay) {
+    setTimeout(function () {
+      var d = document.querySelectorAll('#bds .bd')[b];
+      if (!d) return;
+      d.classList.add('on'); setTimeout(function () { d.classList.remove('on'); }, 110);
+    }, delay);
+  }
+  function metroSched() {
+    var c = AC;
+    while (metro.next < c.currentTime + 0.12) {
+      var delay = Math.max(0, (metro.next - c.currentTime) * 1000);
+      if (metro.sound) {
+        clickAt(metro.next, metro.beat === 0);
+        ignoreUntil = Math.max(ignoreUntil, performance.now() + delay + 90);
+      }
+      dotAt(metro.beat, delay);
+      metro.next += 60 / metro.bpm;
+      metro.beat = (metro.beat + 1) % metro.beats;
+    }
+  }
+  function metroToggle() {
+    if (metro.on) { clearInterval(metro.timer); metro.timer = null; metro.on = false; }
+    else {
+      var c = audio(); metro.beat = 0; metro.next = c.currentTime + 0.1; metro.on = true;
+      metro.timer = setInterval(metroSched, 25); metroSched();
+    }
+    syncMetroUI();
+  }
+  function setBpm(v) { metro.bpm = Math.max(40, Math.min(160, v)); lsSet('qj_bpm', String(metro.bpm)); syncMetroUI(); }
+  $('metroBtn').addEventListener('click', metroToggle);
+  $('bpmDn').addEventListener('click', function () { setBpm(metro.bpm - 5); });
+  $('bpmUp').addEventListener('click', function () { setBpm(metro.bpm + 5); });
+  $('beats').addEventListener('change', function () { metro.beats = parseInt($('beats').value, 10); metro.beat = 0; syncMetroUI(); });
+  $('metroSnd').addEventListener('click', function () { metro.sound = !metro.sound; syncMetroUI(); });
+  syncMetroUI();
+
+  /* ---------- rhythm mode ---------- */
+  function rhyWin() { return Math.max(0.3, 0.2 * metro.bpm / 60); }
+  function beatNow() { return rhy.running ? (performance.now() - rhy.t0) / (60000 / metro.bpm) : 0; }
+  function buildTimeline() {
+    rhy.onset = view.events.map(function (e) { return view.bar + e.on; });
+    rhy.res = view.events.map(function () { return null; });
+    rhy.end = view.bar + view.end; rhy.wrong = 0; rhy.lastTI = -2;
+  }
+  function firstOpen() { for (var i = 0; i < rhy.res.length; i++) if (!rhy.res[i]) return i; return -1; }
+  function targetIdx() {
+    if (demoTimer || !view.events.length) return -1;
+    if (rhy.on) {
+      if (!rhy.running) return -1;
+      var j = firstOpen();
+      return j >= 0 && rhy.onset[j] - beatNow() <= 1 ? j : -1;
+    }
+    return done ? -1 : idx;
+  }
+  function setJudge(text, cls) {
+    var j = $('judge');
+    if (j.textContent !== text) j.textContent = text;
+    j.className = 'judge' + (cls ? ' ' + cls : '');
+  }
+  function fmtMs(ms) { return (ms > 0 ? '+' : '') + ms + ' 毫秒'; }
+  function markMisses(b) {
+    var win = rhyWin();
+    for (var i = 0; i < rhy.res.length; i++) {
+      if (!rhy.res[i] && b > rhy.onset[i] + win) { rhy.res[i] = { s: 'miss' }; setJudge('漏了', 'bad'); }
+    }
+  }
+  function rhyProgress() {
+    var n = rhy.res.length, dn = rhy.res.filter(Boolean).length;
+    $('progText').textContent = '已判 ' + dn + ' / ' + n + ' 步';
+    $('progFill').style.width = (n ? dn / n * 100 : 0) + '%';
+  }
+  function rhyTick() {
+    if (!rhy.running) return;
+    var b = beatNow();
+    markMisses(b);
+    if (b < view.bar) setJudge('预备 ' + (view.bar - Math.floor(b)), '');
+    var ti = targetIdx();
+    if (ti !== rhy.lastTI) {
+      rhy.lastTI = ti;
+      setHands(ti >= 0 ? view.events[ti] : null);
+      $('want').textContent = ti >= 0 ? evText(view.events[ti]) : '—';
+    }
+    rhyProgress();
+    if (b > rhy.end + 0.3) rhyFinish();
+  }
+  function rhyAttempt(midis, src, now) {
+    var lat = src === 'mic' ? (midis.length > 1 ? 0.25 : 0.13) * metro.bpm / 60 : 0;
+    var b = beatNow() - lat, win = rhyWin();
+    markMisses(b);
+    var j = firstOpen();
+    if (j < 0) return;
+    var ev = view.events[j], d = b - rhy.onset[j];
+    if (d < -win) return;
+    var bad = midis.filter(function (mm) { return !inTones(ev, mm, src); });
+    if (bad.length) { rhy.wrong++; bad.forEach(function (mm) { flash(mm, 'bad', 350); }); return; }
+    if (!satisfied(ev, 350, now)) { midis.forEach(function (mm) { flash(mm, 'demo', 250); }); return; }
+    var ms = Math.round(d * 60000 / metro.bpm), perfect = Math.abs(d) <= win * 0.5;
+    rhy.res[j] = { s: perfect ? 'perfect' : 'good', d: d };
+    ev.tones.forEach(function (t) { flash(t.m, 'ok', 350); });
+    recent = {};
+    setJudge(perfect ? '准 ' + fmtMs(ms) : (d < 0 ? '偏早 ' : '偏晚 ') + fmtMs(ms), perfect ? 'ok' : 'warn');
+  }
+  function rhyLock(on) {
+    ['bpmDn', 'bpmUp', 'beats', 'metroBtn'].forEach(function (id) { $(id).disabled = on; });
+  }
+  function rhyStart() {
+    if (demoTimer) stopDemo();
+    var c = audio();
+    buildTimeline(); recent = {}; $('done').hidden = true; setJudge('', '');
+    if (metro.on) { clearInterval(metro.timer); metro.timer = null; metro.on = false; }
+    metro.beats = view.bar; $('beats').value = String(view.bar);
+    rhy.t0 = performance.now() + 400; rhy.running = true;
+    metro.beat = 0; metro.next = c.currentTime + 0.4; metro.on = true;
+    metro.timer = setInterval(metroSched, 25); metroSched();
+    rhyLock(true); $('go').textContent = '停止'; syncMetroUI(); updateStatus();
+  }
+  function rhyStop() {
+    if (rhy.running) {
+      rhy.running = false;
+      if (metro.on) { clearInterval(metro.timer); metro.timer = null; metro.on = false; }
+      rhyLock(false); syncMetroUI();
+    }
+    $('go').textContent = '开始';
+  }
+  function rhyFinish() {
+    var n = rhy.res.length, p = 0, g = 0, mi = 0, sum = 0, cnt = 0;
+    rhy.res.forEach(function (r) {
+      if (!r) return;
+      if (r.s === 'perfect') p++; else if (r.s === 'good') g++; else mi++;
+      if (r.d !== undefined) { sum += r.d; cnt++; }
+    });
+    rhyStop();
+    var pct = Math.round((p + 0.6 * g) / n * 100), avg = cnt ? Math.round(sum / cnt * 60000 / metro.bpm) : 0;
+    var key = 'qj_rbest_' + song.id + (hand === 'R' ? '' : '_' + hand + lhs), prev = parseInt(lsGet(key) || '-1', 10);
+    if (pct > prev) lsSet(key, String(pct));
+    $('doneText').textContent = '准 ' + p + ' · 还行 ' + g + ' · 漏 ' + mi + '(共 ' + n + ' 步)';
+    $('doneBest').textContent = '节奏得分 ' + pct + '%' + (cnt ? ',平均' + (avg > 0 ? '偏晚 ' : '偏早 ') + Math.abs(avg) + ' 毫秒' : '')
+      + (pct > prev ? '(新纪录)' : '(最好 ' + prev + '%)');
+    $('done').hidden = false; setJudge('完成', 'ok'); setHands(null);
+  }
+  $('rhy').addEventListener('click', function () {
+    rhy.on = !rhy.on;
+    $('rhy').setAttribute('aria-pressed', rhy.on ? 'true' : 'false');
+    $('go').hidden = !rhy.on;
+    if (demoTimer) stopDemo();
+    resetSong();
+  });
+  $('go').addEventListener('click', function () { if (rhy.running) { rhyStop(); resetSong(); } else rhyStart(); });
+
+  /* ---------- staff notation (treble, bass, or both) ---------- */
+  var sc = $('staff'), sx = sc.getContext('2d'), SW = 0, SH = 0, clefOk = false;
+  var SP = 11, SX0 = 74, staffCache = { key: '', lines: [], lineOf: [] };
+  var CLEF = { treble: { bs: 37, glyph: '\u{1D11E}', fb: 'G', refLine: 1 }, bass: { bs: 25, glyph: '\u{1D122}', fb: 'F', refLine: 3 } };
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('58px "Noto Music"', '\u{1D11E}\u{1D122}').then(function () {
+      clefOk = document.fonts.check('58px "Noto Music"', '\u{1D11E}');
+    }).catch(function () {});
+  }
+  function layoutStaff() {
+    var r = $('score').getBoundingClientRect();
+    if (!r.width) return;
+    var d = window.devicePixelRatio || 1;
+    SW = r.width; SH = r.height;
+    sc.width = Math.round(SW * d); sc.height = Math.round(SH * d);
+    sx.setTransform(d, 0, 0, d, 0, 0);
+  }
+  function staffBottoms() {
+    if (view.hand === 'B') return { treble: 86, bass: 86 + 4 * SP + 52 };
+    return view.hand === 'L' ? { bass: 86 } : { treble: 86 };
+  }
+  function staffLines() {
+    var key = song.id + ':' + hand + lhs + ':' + Math.round(SW) + ':' + view.events.length;
+    if (staffCache.key === key) return staffCache.lines;
+    var lines = [], lineOf = [], cur = { items: [], bars: [] }, x = SX0, evs = view.events;
+    evs.forEach(function (ev, i) {
+      var nx = evs[i + 1], gap = nx ? nx.on - ev.on : Math.max.apply(null, ev.tones.map(function (t) { return t.d; }));
+      var sharp = ev.tones.some(function (t) { return NAMES[t.m % 12].length > 1; });
+      var w = 30 + 20 * Math.min(gap, 3) + (sharp ? 9 : 0);
+      if (x + w > SW - 16 && cur.items.length) { lines.push(cur); cur = { items: [], bars: [] }; x = SX0; }
+      cur.items.push({ i: i, x: x + w / 2 + (sharp ? 4 : 0) }); lineOf[i] = lines.length; x += w;
+      var endOn = nx ? nx.on : ev.on + gap, bound = (Math.floor(ev.on / view.bar + 1e-6) + 1) * view.bar;
+      if (endOn >= bound - 1e-6) { cur.bars.push(x + 2); x += 8; }
+    });
+    lines.push(cur);
+    staffCache = { key: key, lines: lines, lineOf: lineOf };
+    return lines;
+  }
+  function noteKind(d) {
+    if (d >= 4) return { hollow: true, stem: false, flags: 0, dot: false };
+    if (d >= 3) return { hollow: true, stem: true, flags: 0, dot: true };
+    if (d >= 2) return { hollow: true, stem: true, flags: 0, dot: false };
+    if (d >= 1.5) return { hollow: false, stem: true, flags: 0, dot: true };
+    if (d >= 1) return { hollow: false, stem: true, flags: 0, dot: false };
+    if (d >= 0.75) return { hollow: false, stem: true, flags: 1, dot: true };
+    if (d >= 0.5) return { hollow: false, stem: true, flags: 1, dot: false };
+    return { hollow: false, stem: true, flags: 2, dot: false };
+  }
+  /* One staff's worth of tones at one x: heads, ledger lines, accidentals, one shared stem. */
+  function drawGroup(x, tones, color, outline, clef, bottom) {
+    var bs = CLEF[clef].bs, k = noteKind(tones[0].d), s, ys = [], steps = [];
+    function yOf(step) { return bottom - (step - bs) * SP / 2; }
+    tones.forEach(function (t) { steps.push(whiteNo(t.m)); });
+    sx.strokeStyle = col.muted; sx.lineWidth = 1.2;
+    tones.forEach(function (t, q) {
+      var step = steps[q], y = yOf(step); ys.push(y);
+      if (step <= bs - 2) for (s = bs - 2; s >= step; s -= 2) { sx.beginPath(); sx.moveTo(x - 11, yOf(s)); sx.lineTo(x + 11, yOf(s)); sx.stroke(); }
+      if (step >= bs + 10) for (s = bs + 10; s <= step; s += 2) { sx.beginPath(); sx.moveTo(x - 11, yOf(s)); sx.lineTo(x + 11, yOf(s)); sx.stroke(); }
+      if (NAMES[t.m % 12].length > 1) {
+        sx.fillStyle = color; sx.font = '700 17px ' + col.font; sx.textAlign = 'center'; sx.textBaseline = 'middle';
+        sx.fillText('♯', x - 17, y);
+      }
+      sx.save(); sx.translate(x, y); sx.rotate(-0.35); sx.beginPath(); sx.ellipse(0, 0, 6.6, 4.8, 0, 0, 6.283);
+      if (k.hollow) { sx.lineWidth = 1.8; sx.strokeStyle = color; sx.stroke(); }
+      else { sx.fillStyle = color; sx.fill(); if (outline) { sx.lineWidth = 1; sx.strokeStyle = col.fg; sx.stroke(); } }
+      sx.restore();
+      if (k.dot) { sx.fillStyle = color; sx.beginPath(); sx.arc(x + 12, step % 2 ? y - SP / 2 : y, 2, 0, 6.283); sx.fill(); }
+    });
+    if (k.stem) {
+      var avg = steps.reduce(function (a, b) { return a + b; }, 0) / steps.length, up = avg < bs + 4;
+      var yTop = Math.min.apply(null, ys), yBot = Math.max.apply(null, ys);
+      var xs = up ? x + 5.9 : x - 5.9, y1 = up ? yBot : yTop, y2 = up ? yTop - 3.5 * SP : yBot + 3.5 * SP;
+      sx.strokeStyle = color; sx.lineWidth = 1.4; sx.beginPath(); sx.moveTo(xs, y1); sx.lineTo(xs, y2); sx.stroke();
+      for (var f = 0; f < k.flags; f++) {
+        var o = f * 6 * (up ? 1 : -1);
+        sx.lineWidth = 2; sx.beginPath(); sx.moveTo(xs, y2 + o);
+        sx.quadraticCurveTo(xs + 11, y2 + o + (up ? 8 : -8), xs + 7, y2 + o + (up ? 18 : -18)); sx.stroke();
+      }
+    }
+  }
+  function drawStaff() {
+    if (!SW || !view.events.length) return;
+    var lines = staffLines(), n = view.events.length, evs = view.events, bots = staffBottoms();
+    var hi = demoTimer ? demoI - 1 : curTI;
+    var cur = rhy.on ? (rhy.running ? (firstOpen() < 0 ? n - 1 : firstOpen()) : 0)
+      : (demoTimer ? Math.max(0, demoI - 1) : (done ? n - 1 : Math.min(idx, n - 1)));
+    var li = staffCache.lineOf[cur] || 0, L = lines[li], clefs = Object.keys(bots);
+    var topY = Math.min.apply(null, clefs.map(function (c) { return bots[c] - 4 * SP; }));
+    var botY = Math.max.apply(null, clefs.map(function (c) { return bots[c]; }));
+    sx.clearRect(0, 0, SW, SH); sx.fillStyle = col.panel; sx.fillRect(0, 0, SW, SH);
+    clefs.forEach(function (c) {
+      var bt = bots[c];
+      sx.strokeStyle = col.muted; sx.lineWidth = 1; sx.globalAlpha = 0.75;
+      for (var k = 0; k < 5; k++) { sx.beginPath(); sx.moveTo(10, bt - k * SP); sx.lineTo(SW - 10, bt - k * SP); sx.stroke(); }
+      sx.globalAlpha = 1; sx.fillStyle = col.fg;
+      var cy = bt - CLEF[c].refLine * SP;
+      if (clefOk) { sx.font = '58px "Noto Music"'; sx.textAlign = 'left'; sx.textBaseline = 'alphabetic'; sx.fillText(CLEF[c].glyph, 16, cy); }
+      else { sx.font = 'italic 700 40px serif'; sx.textAlign = 'left'; sx.textBaseline = 'middle'; sx.fillText(CLEF[c].fb, 24, cy); }
+    });
+    sx.strokeStyle = col.fg; sx.lineWidth = 1.5;
+    if (clefs.length > 1) { sx.beginPath(); sx.moveTo(10, topY); sx.lineTo(10, botY); sx.stroke(); }
+    L.bars.forEach(function (bx) { sx.beginPath(); sx.moveTo(bx, topY); sx.lineTo(bx, botY); sx.stroke(); });
+    L.items.forEach(function (it) {
+      var i = it.i, ev = evs[i], color = col.fg, r = rhy.res[i];
+      if (rhy.on) { if (r) color = r.s === 'miss' ? col.bad : col.ok; }
+      else if (i < idx || done) color = col.ok;
+      if (i === hi) {
+        sx.globalAlpha = 0.22; sx.fillStyle = col.target; sx.fillRect(it.x - 22, topY - 24, 44, botY - topY + 50); sx.globalAlpha = 1;
+        color = col.target;
+      }
+      var tr = ev.tones.filter(function (t) { return t.h !== 'L'; }), ba = ev.tones.filter(function (t) { return t.h === 'L'; });
+      if (tr.length && bots.treble !== undefined) drawGroup(it.x, tr, color, i === hi, 'treble', bots.treble);
+      if (ba.length && bots.bass !== undefined) drawGroup(it.x, ba, color, i === hi, 'bass', bots.bass);
+      if (ev.name && view.hand !== 'R') {
+        sx.fillStyle = col.lh; sx.font = '700 14px ' + col.font; sx.textAlign = 'center'; sx.textBaseline = 'middle';
+        sx.fillText(ev.name, it.x, 16);
+      }
+    });
+    sx.fillStyle = col.muted; sx.font = '12px ' + col.font; sx.textAlign = 'right'; sx.textBaseline = 'top';
+    sx.fillText((li + 1) + ' / ' + lines.length, SW - 12, 4);
+  }
+  function applyStaff() {
+    $('stf').setAttribute('aria-pressed', staffOn ? 'true' : 'false');
+    $('score').hidden = !staffOn;
+    $('score').classList.toggle('grand', view.hand === 'B');
+    if (staffOn) layoutStaff();
+  }
+  $('stf').addEventListener('click', function () { staffOn = !staffOn; lsSet('qj_staff', staffOn ? '1' : '0'); applyStaff(); });
+  new ResizeObserver(layoutStaff).observe($('score'));
+
+  /* ---------- custom songs (pasted 简谱) ---------- */
+  function parseJianpu(text, tonic) {
+    var re = /([#b♯♭]?)([1-7])(['’′,，]*)/g, base = [0, 2, 4, 5, 7, 9, 11], out = [], mm;
+    while ((mm = re.exec(text))) {
+      var pc = base[+mm[2] - 1];
+      if (mm[1] === '#' || mm[1] === '♯') pc++; else if (mm[1]) pc--;
+      var oct = 0;
+      mm[3].split('').forEach(function (ch) { oct += (ch === ',' || ch === '，') ? -1 : 1; });
+      out.push(60 + tonic + pc + 12 * oct);
+    }
+    return out;
+  }
+  function checkRange(notes) {
+    var lo = Math.min.apply(null, notes), hi = Math.max.apply(null, notes);
+    var low = Math.floor(lo / 12) * 12, octs = Math.max(2, Math.ceil((hi - low + 1) / 12));
+    return { lo: lo, hi: hi, low: low, octs: octs, ok: octs <= 3 };
+  }
+  function loadCustom() {
+    var raw = []; try { raw = JSON.parse(lsGet('qj_custom') || '[]'); } catch (e) {}
+    raw.forEach(function (c) {
+      var notes = parseJianpu(c.text, c.tonic);
+      if (notes.length && checkRange(notes).ok)
+        SONGS.push({ id: c.id, title: c.title, notes: notes, custom: true, tonic: c.tonic, raw: c });
+    });
+  }
+  function saveCustom() {
+    lsSet('qj_custom', JSON.stringify(SONGS.filter(function (s) { return s.custom; }).map(function (s) { return s.raw; })));
+  }
+  function refreshSongSelect() {
+    $('song').innerHTML = '';
+    SONGS.forEach(function (sg, i) {
+      var o = document.createElement('option'); o.value = i; o.textContent = sg.title; $('song').appendChild(o);
+    });
+  }
+  function previewAdd() {
+    var info = $('addInfo'), notes = parseJianpu($('txt').value, parseInt($('tonic').value, 10));
+    info.classList.remove('err');
+    if (!$('txt').value.trim()) { info.textContent = ''; return null; }
+    if (!notes.length) { info.classList.add('err'); info.textContent = '没有识别到音符,请检查写法。'; return null; }
+    var r = checkRange(notes);
+    if (!r.ok) { info.classList.add('err'); info.textContent = '音域超过三个八度(' + noteName(r.lo) + ' 到 ' + noteName(r.hi) + '),请换简单版或换个调。'; return null; }
+    info.textContent = '识别到 ' + notes.length + ' 个音,音域 ' + noteName(r.lo) + ' 到 ' + noteName(r.hi) + '。';
+    return notes;
+  }
+  $('add').addEventListener('click', function () { $('addModal').hidden = false; $('nm').focus(); });
+  $('addCancel').addEventListener('click', function () { $('addModal').hidden = true; });
+  $('txt').addEventListener('input', previewAdd);
+  $('tonic').addEventListener('change', previewAdd);
+  $('addForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var notes = previewAdd(), title = $('nm').value.trim();
+    if (!title) { $('addInfo').classList.add('err'); $('addInfo').textContent = '请先写上曲名。'; return; }
+    if (!notes) return;
+    var tonic = parseInt($('tonic').value, 10), id = 'c' + Date.now();
+    var sg = { id: id, title: title, notes: notes, custom: true, tonic: tonic, raw: { id: id, title: title, tonic: tonic, text: $('txt').value } };
+    SONGS.push(sg); saveCustom(); refreshSongSelect();
+    $('addModal').hidden = true; $('nm').value = ''; $('txt').value = ''; $('addInfo').textContent = '';
+    useSong(SONGS.length - 1);
+  });
+  $('delSong').addEventListener('click', function () {
+    if (!song.custom) return;
+    SONGS.splice(SONGS.indexOf(song), 1); saveCustom(); refreshSongSelect(); useSong(0);
+  });
+
+  /* ---------- song / hand selection ---------- */
+  function syncHandUI() {
+    var has = song.chords && song.chords.length > 0;
+    document.querySelectorAll('#handSeg button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.h === hand ? 'true' : 'false');
+      if (b.dataset.h !== 'R') b.disabled = !has;
+      b.title = !has && b.dataset.h !== 'R' ? '这首暂时没有左手伴奏' : '';
+    });
+    document.querySelectorAll('#lhSeg button').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.l === lhs ? 'true' : 'false');
+    });
+    $('lhSeg').hidden = hand === 'R';
+  }
+  function applyView() {
+    view = buildView(song, hand, lhs);
+    var r = viewRange(view);
+    if (r.octs > 4 && hand !== 'R') {
+      hand = 'R'; showMsg('这首的音域太宽,键盘放不下两只手,已切回右手。'); syncHandUI();
+      view = buildView(song, hand, lhs); r = viewRange(view);
+    }
+    buildKeys(r.low, r.octs); layout(); applyStaff(); staffCache.key = '';
+    resetSong(); $('delSong').hidden = !song.custom;
+  }
+  function useSong(i) {
+    if (demoTimer) stopDemo();
+    song = SONGS[i]; prepareSong(song); $('song').value = i;
+    if (hand !== 'R' && !song.chords.length) hand = 'R';
+    syncHandUI(); applyView();
+  }
+  $('song').addEventListener('change', function () { showMsg(''); useSong(parseInt($('song').value, 10)); });
+  document.querySelectorAll('#handSeg button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (b.disabled) return;
+      showMsg(''); hand = b.dataset.h; lsSet('qj_hand', hand); syncHandUI(); if (demoTimer) stopDemo(); applyView();
+    });
+  });
+  document.querySelectorAll('#lhSeg button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      showMsg(''); lhs = b.dataset.l; lsSet('qj_lhs', lhs); syncHandUI(); if (demoTimer) stopDemo(); applyView();
+    });
+  });
+  function setNotation(v) {
+    notation = v; lsSet('qj_notation', v);
+    document.querySelectorAll('.seg button[data-n]').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.n === v ? 'true' : 'false');
+    });
+    updateStatus();
+  }
+  document.querySelectorAll('.seg button[data-n]').forEach(function (b) {
+    b.addEventListener('click', function () { setNotation(b.dataset.n); });
+  });
+  function applyFing() {
+    $('fing').setAttribute('aria-pressed', showFing ? 'true' : 'false');
+    $('handWrap').hidden = !showFing;
+  }
+  $('fing').addEventListener('click', function () { showFing = !showFing; lsSet('qj_fing', showFing ? '1' : '0'); applyFing(); });
+  $('demo').addEventListener('click', runDemo);
+  $('restart').addEventListener('click', function () { if (demoTimer) stopDemo(); resetSong(); });
+  $('again').addEventListener('click', function () { if (rhy.on) rhyStart(); else resetSong(); });
+  $('next').addEventListener('click', function () { useSong((SONGS.indexOf(song) + 1) % SONGS.length); });
+  $('mic').addEventListener('click', function () { if (micOn) stopMic(); else startMic(); });
+
+  new ResizeObserver(layout).observe($('stage'));
+  applyFing(); loadCustom(); refreshSongSelect();
+  useSong(0); setNotation(notation);
+  requestAnimationFrame(frame);
+  window.__qjBoot = true;
+})();
+</script>
+
+<noscript><p style="padding:16px;color:#b3261e">这个页面需要运行脚本。你现在的打开方式没有运行脚本,请换 Safari、Chrome 或 Documents 的浏览器打开。</p></noscript>
+</body>
+</html>
