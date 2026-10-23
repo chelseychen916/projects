@@ -132,6 +132,8 @@ select:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-
 .mic-opts { display: none; align-items: center; gap: 14px; color: var(--muted); }
 .mic-opts.on { display: flex; flex-wrap: wrap; }
 .mic-opts label { display: flex; align-items: center; gap: 6px; }
+.micdbg { flex-basis: 100%; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.micdbg:empty { display: none; }
 .msg { color: var(--bad); flex-basis: 100%; min-height: 0; }
 .msg:empty { display: none; }
 
@@ -221,9 +223,10 @@ select:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-
     <div class="prog"><span id="progText"></span><div class="progbar"><i id="progFill"></i></div></div>
     <div class="heard" id="heard">听到 <b id="heardNote">—</b><div class="meter"><i id="lvl"></i></div></div>
     <div class="mic-opts" id="micOpts">
-      <label for="sens">灵敏度 <input type="range" id="sens" min="1" max="6" value="3"></label>
+      <label for="sens">灵敏度 <input type="range" id="sens" min="1" max="8" value="5"></label>
       <label for="anyOct"><input type="checkbox" id="anyOct" checked> 不分高低八度</label>
     </div>
+    <div class="micdbg" id="micDbg"></div>
     <div class="msg" id="msg" role="status"></div>
   </section>
 
@@ -885,7 +888,8 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
     $('mic').lastChild.textContent = on ? '麦克风:已开' : '麦克风听音';
     $('heard').classList.toggle('on', on);
     $('micOpts').classList.toggle('on', on);
-    if (!on) { $('heardNote').textContent = '—'; $('lvl').style.width = '0'; }
+    if (!on) { $('heardNote').textContent = '—'; $('lvl').style.width = '0'; $('micDbg').textContent = ''; }
+    else $('micDbg').textContent = '麦克风已打开,弹一个音试试…';
   }
   function stopMic() {
     clearInterval(micTimer); micTimer = null;
@@ -921,12 +925,18 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
     var s = 0, i, n = 2048;
     for (i = buf.length - n; i < buf.length; i++) s += buf[i] * buf[i];
     var rms = Math.sqrt(s / n), now = performance.now();
-    $('lvl').style.width = Math.min(100, rms * 600) + '%';
+    $('lvl').style.width = Math.min(100, Math.sqrt(rms) * 250) + '%';
     var gate = 0.03 / parseFloat($('sens').value);
+    if (AC.state !== 'running') AC.resume();
+    var base = '音量 ' + Math.round(rms * 1000) + ' / 门槛 ' + Math.round(gate * 1000);
     if (demoTimer || now < ignoreUntil) { stable = 0; stableC = 0; lastMidi = null; return; }
     minR = Math.min(minR, rms);
     if (!armed && (rms < gate * 0.6 || rms > minR * 1.7 + gate * 0.5)) armed = true;
-    if (rms < gate) { $('heardNote').textContent = '—'; stable = 0; stableC = 0; lastMidi = null; return; }
+    if (rms < gate) {
+      $('heardNote').textContent = '—'; stable = 0; stableC = 0; lastMidi = null;
+      $('micDbg').textContent = base + ' · 声音太小:靠近琴,或把灵敏度往右调' + (AC.state !== 'running' ? '(音频未运行)' : '');
+      return;
+    }
     var ti = targetIdx(), ev = ti >= 0 ? view.events[ti] : null;
     if (ev && ev.tones.length > 1) {
       an.getFloatFrequencyData(fdb);
@@ -940,11 +950,12 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
       return;
     }
     var r = detectPitch(buf, AC.sampleRate);
-    if (!r) { stable = 0; lastMidi = null; return; }
+    if (!r) { stable = 0; lastMidi = null; $('micDbg').textContent = base + ' · 有声音,但听不出清晰的单音'; return; }
     var midi = Math.round(r.midi);
-    if (Math.abs(r.midi - midi) > 0.4) { stable = 0; return; }
+    if (Math.abs(r.midi - midi) > 0.4) { stable = 0; $('micDbg').textContent = base + ' · 音高不稳,约 ' + Math.round(r.freq) + ' Hz'; return; }
     if (midi === lastMidi) stable++; else { lastMidi = midi; stable = 1; }
     $('heardNote').textContent = noteName(midi);
+    $('micDbg').textContent = base + ' · 听到 ' + noteName(midi) + '(' + Math.round(r.freq) + ' Hz)' + (ev ? ',要弹 ' + ev.tones.map(function (t) { return noteName(t.m); }).join(' ') : '');
     if (!ev || done) return;
     var match = inTones(ev, midi, 'mic');
     if (match && stable >= 2 && armed) { armed = false; minR = rms; attempt([midi], 'mic'); }
