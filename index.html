@@ -244,7 +244,7 @@ select:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-
       </div>
     </div>
   </main>
-  <div class="foot">没有开麦克风时:点屏幕琴键(可以多指同时按),或用电脑键盘 A S D F G H J 弹最左边八度的白键,Q W E R T Y U 弹右边一个八度。</div>
+  <div class="foot">没有开麦克风时:点屏幕琴键(可以多指同时按),或用电脑键盘 A S D F G H J 弹最左边八度的白键,Q W E R T Y U 弹右边一个八度。 · 页面版本 v11</div>
 </div>
 
 <div class="modal" id="addModal" hidden>
@@ -911,7 +911,7 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
       buf = new Float32Array(an.fftSize); fdb = new Float32Array(an.frequencyBinCount);
     } catch (e) {
       stopMic();
-      showMsg('麦克风没有打开:没有授权,或当前页面不允许使用麦克风。可以先点屏幕琴键。');
+      showMsg('麦克风没有打开(' + (e && e.name ? e.name : '未知错误') + (e && e.message ? ':' + e.message : '') + ')。可能是没有授权,或当前页面不允许使用麦克风。可以先点屏幕琴键。');
       return;
     }
     armed = true; minR = 1; lastMidi = null; stable = 0; stableC = 0;
@@ -919,9 +919,19 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
     if (metro.sound) { metro.sound = false; syncMetroUI(); }
     micTimer = setInterval(micTick, 40);
   }
+  // Older Safari lacks getFloatTimeDomainData; fall back to the byte version.
+  function readTime() {
+    if (an.getFloatTimeDomainData) { an.getFloatTimeDomainData(buf); return; }
+    var u = new Uint8Array(buf.length);
+    an.getByteTimeDomainData(u);
+    for (var i = 0; i < u.length; i++) buf[i] = (u[i] - 128) / 128;
+  }
   function micTick() {
+    try { micTick0(); } catch (e) { $('micDbg').textContent = '识别出错:' + (e && e.message ? e.message : e); }
+  }
+  function micTick0() {
     if (!an) return;
-    an.getFloatTimeDomainData(buf);
+    readTime();
     var s = 0, i, n = 2048;
     for (i = buf.length - n; i < buf.length; i++) s += buf[i] * buf[i];
     var rms = Math.sqrt(s / n), now = performance.now();
