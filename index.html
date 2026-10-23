@@ -221,9 +221,10 @@ select:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-
     <div class="want">现在弹 <b id="want">—</b></div>
     <div class="judge" id="judge" role="status"></div>
     <div class="prog"><span id="progText"></span><div class="progbar"><i id="progFill"></i></div></div>
-    <div class="heard" id="heard">听到 <b id="heardNote">—</b><div class="meter"><i id="lvl"></i></div></div>
+    <div class="heard" id="heard">听到 <b id="heardNote">—</b><div class="meter"><i id="lvl"></i></div>
+      <label for="sens" style="display:flex;align-items:center;gap:6px">灵敏度 <input type="range" id="sens" min="1" max="8" value="5" style="width:130px"></label>
+    </div>
     <div class="mic-opts" id="micOpts">
-      <label for="sens">灵敏度 <input type="range" id="sens" min="1" max="8" value="5"></label>
       <label for="anyOct"><input type="checkbox" id="anyOct" checked> 不分高低八度</label>
     </div>
     <div class="micdbg" id="micDbg"></div>
@@ -244,7 +245,7 @@ select:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-
       </div>
     </div>
   </main>
-  <div class="foot">没有开麦克风时:点屏幕琴键(可以多指同时按),或用电脑键盘 A S D F G H J 弹最左边八度的白键,Q W E R T Y U 弹右边一个八度。 · 页面版本 v11</div>
+  <div class="foot">没有开麦克风时:点屏幕琴键(可以多指同时按),或用电脑键盘 A S D F G H J 弹最左边八度的白键,Q W E R T Y U 弹右边一个八度。 · 页面版本 v12</div>
 </div>
 
 <div class="modal" id="addModal" hidden>
@@ -270,8 +271,8 @@ select:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-
 
 <script>
 //<pitch>
-function detectPitch(buf, sr) {
-  var W = 2048, tauMin = Math.floor(sr / 1200), tauMax = Math.ceil(sr / 200);
+function detectPitch(buf, sr, thr) {
+  var W = 2048, tauMin = Math.floor(sr / 1200), tauMax = Math.ceil(sr / 70);
   var start = buf.length - W - tauMax - 1;
   if (start < 0) return null;
   var d = new Float32Array(tauMax + 2), tau, j, diff, sum;
@@ -288,7 +289,7 @@ function detectPitch(buf, sr) {
   }
   var found = -1;
   for (tau = tauMin; tau <= tauMax; tau++) {
-    if (cm[tau] < 0.12) {
+    if (cm[tau] < (thr || 0.12)) {
       while (tau + 1 <= tauMax && cm[tau + 1] < cm[tau]) tau++;
       found = tau; break;
     }
@@ -881,6 +882,7 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
   /* ---------- microphone listening ---------- */
   var stream = null, an = null, buf = null, fdb = null, micTimer = null;
   var armed = true, minR = 1, lastMidi = null, stable = 0, stableC = 0;
+  var noise = 0.004, calUntil = 0, calSum = 0, calN = 0, peak = 0;
   function showMsg(t) { $('msg').textContent = t || ''; }
   function setMicUI(on) {
     micOn = on;
@@ -915,6 +917,7 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
       return;
     }
     armed = true; minR = 1; lastMidi = null; stable = 0; stableC = 0;
+    calUntil = performance.now() + 1200; calSum = 0; calN = 0; peak = 0;
     setMicUI(true);
     if (metro.sound) { metro.sound = false; syncMetroUI(); }
     micTimer = setInterval(micTick, 40);
@@ -936,9 +939,15 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
     for (i = buf.length - n; i < buf.length; i++) s += buf[i] * buf[i];
     var rms = Math.sqrt(s / n), now = performance.now();
     $('lvl').style.width = Math.min(100, Math.sqrt(rms) * 250) + '%';
-    var gate = 0.03 / parseFloat($('sens').value);
     if (AC.state !== 'running') AC.resume();
-    var base = '音量 ' + Math.round(rms * 1000) + ' / 门槛 ' + Math.round(gate * 1000);
+    // For the first second after opening, just measure the room's background level.
+    if (calUntil) {
+      if (now < calUntil) { calSum += rms; calN++; $('micDbg').textContent = '正在适应环境噪音,请先别弹,约 1 秒…'; return; }
+      noise = Math.max(0.0008, calSum / Math.max(1, calN)); calUntil = 0;
+    }
+    peak = Math.max(rms, peak * 0.97);
+    var gate = Math.max(0.0012, noise * 2.5) * 5 / parseFloat($('sens').value);
+    var base = '音量 ' + (rms * 1000).toFixed(1) + '(最近最大 ' + (peak * 1000).toFixed(1) + ')/ 门槛 ' + (gate * 1000).toFixed(1);
     if (demoTimer || now < ignoreUntil) { stable = 0; stableC = 0; lastMidi = null; return; }
     minR = Math.min(minR, rms);
     if (!armed && (rms < gate * 0.6 || rms > minR * 1.7 + gate * 0.5)) armed = true;
@@ -959,7 +968,7 @@ function chordPresent(db, sr, fftSize, midis, anyOct) {
       }
       return;
     }
-    var r = detectPitch(buf, AC.sampleRate);
+    var r = detectPitch(buf, AC.sampleRate, 0.2);
     if (!r) { stable = 0; lastMidi = null; $('micDbg').textContent = base + ' · 有声音,但听不出清晰的单音'; return; }
     var midi = Math.round(r.midi);
     if (Math.abs(r.midi - midi) > 0.4) { stable = 0; $('micDbg').textContent = base + ' · 音高不稳,约 ' + Math.round(r.freq) + ' Hz'; return; }
